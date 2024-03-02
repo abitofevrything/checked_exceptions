@@ -1,0 +1,13 @@
+name: checked_exceptions_annotations
+description: Annotations for use with https://pub.dev/packages/checked_exceptions.
+version: 1.0.0
+repository: https://github.com/abitofevrything/checked_exceptions
+
+environment:
+  sdk: ^3.0.0
+
+dev_dependencies:
+  lints: ^3.0.0
+  test: ^1.24.0
+dependencies:
+  meta: ^1.12.0
