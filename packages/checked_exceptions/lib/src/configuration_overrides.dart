@@ -185,12 +185,12 @@ class ConfigurationOverride {
       }
 
       final valueConfigurations = <PromotionType, Configuration>{};
-      if (raw['value'] case Map<String, dynamic> declaredValueConfigurations) {
+      if (raw['value'] case Map declaredValueConfigurations) {
         for (final MapEntry(:key, :value) in declaredValueConfigurations.entries) {
           final promotionType =
               PromotionType.values.firstWhereOrNull((element) => element.key == key);
           if (promotionType == null) continue;
-          if (value is! Map<String, dynamic>) continue;
+          if (value is! Map) continue;
 
           final parsedConfiguration = parseConfiguration(value);
           if (parsedConfiguration == null) continue;
