@@ -23,4 +23,11 @@ class ThrowFinder extends UnifyingAstVisitor<Future<Map<AstNode, List<DartType>>
     if (results.isEmpty) return {};
     return results.reduce((value, element) => {...value, ...element});
   }
+
+  @override
+  Future<Map<AstNode, List<DartType>>> visitFunctionExpression(FunctionExpression node) async => {};
+
+  @override
+  Future<Map<AstNode, List<DartType>>> visitVariableDeclaration(VariableDeclaration node) async =>
+      node.isLate ? {} : await super.visitVariableDeclaration(node)!;
 }
