@@ -323,10 +323,12 @@ class ConfigurationBuilder {
     final body = switch (declarationNode) {
       MethodDeclaration() => declarationNode.body,
       FunctionDeclaration() => declarationNode.functionExpression.body,
+      // TODO: Constructors also invoke super constructors and field initializers.
+      ConstructorDeclaration() => declarationNode.body,
       _ => null,
     };
     if (body == null) {
-      print('[BUILDER] Unable to get body of ${elementDeclaration.runtimeType}');
+      print('[BUILDER] Unable to get body of ${declarationNode.runtimeType}');
       return null;
     }
 
