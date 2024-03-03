@@ -2,6 +2,7 @@ name: checked_exceptions
 description: An analyzer plugin adding support for checked exceptions to Dart.
 version: 1.0.0
 repository: https://github.com/abitofevrything/checked_exceptions
+publish_to: none
 
 environment:
   sdk: ^3.0.0
@@ -9,7 +10,10 @@ environment:
 dependencies:
   analyzer: ^6.4.1
   analyzer_plugin: ^0.11.3
+  collection: ^1.18.0
   custom_lint_builder: ^0.6.2
+  checked_exceptions_annotations:
+    path: ../checked_exceptions_annotations
 
 dev_dependencies:
   lints: ^3.0.0

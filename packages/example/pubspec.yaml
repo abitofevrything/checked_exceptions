@@ -1,0 +1,14 @@
+name: example
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  checked_exceptions_annotations:
+    path: ../checked_exceptions_annotations
+
+dev_dependencies:
+  checked_exceptions:
+    path: ../checked_exceptions
+  custom_lint: ^0.4.0
