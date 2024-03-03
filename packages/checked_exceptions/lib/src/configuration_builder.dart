@@ -59,8 +59,9 @@ class ConfigurationBuilder {
   final AnalysisSession session;
 
   final DartType objectType;
+  final DartType typeErrorType;
 
-  ConfigurationBuilder(this.session, {required this.objectType});
+  ConfigurationBuilder(this.session, {required this.objectType, required this.typeErrorType});
 
   /// Create a [ConfigurationBuilder] for [session].
   static Future<ConfigurationBuilder> forSession(AnalysisSession session) async {
@@ -71,6 +72,8 @@ class ConfigurationBuilder {
     return ConfigurationBuilder(
       session,
       objectType: coreLibrary.typeProvider.objectType,
+      typeErrorType:
+          (coreLibrary.element.exportNamespace.get('TypeError') as InterfaceElement).thisType,
     );
   }
 
@@ -283,34 +286,7 @@ class ConfigurationBuilder {
     final inheritedConfigurations =
         (await Future.wait(inheritedConfigurationFutures)).nonNulls.toList();
 
-    Configuration? intersectConfigurations(List<Configuration> configurations) {
-      if (configurations.isEmpty) return null;
-
-      return Configuration(
-        [
-          // All of the types thrown by the first configuration...
-          ...configurations.first.thrownTypes.where(
-            // ...where every other configuration...
-            (thrownType) => configurations.skip(1).every(
-                  // ...declares at least one thrown type...
-                  (configuration) => configuration.thrownTypes.any(
-                    // ...which matches the type thrown by the first configuration.
-                    (declaredThrownType) =>
-                        TypeChecker.fromStatic(declaredThrownType).isAssignableFromType(thrownType),
-                  ),
-                ),
-          ),
-        ],
-        {
-          for (final promotionType in PromotionType.values)
-            if (configurations.map((c) => c.valueConfigurations[promotionType]).nonNulls.toList()
-                case final configurationsToIntersect when configurationsToIntersect.isNotEmpty)
-              promotionType: intersectConfigurations(configurationsToIntersect)!,
-        },
-      );
-    }
-
-    return intersectConfigurations(inheritedConfigurations);
+    return Configuration.intersectConfigurations(inheritedConfigurations);
   }
 
   /// Compute the configuration for an [ExecutableElement] based solely on inference from the types

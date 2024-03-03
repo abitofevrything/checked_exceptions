@@ -1,4 +1,5 @@
 import 'package:analyzer/dart/element/type.dart';
+import 'package:custom_lint_builder/custom_lint_builder.dart';
 
 /// The way in which the value of an expression can cause errors to be thrown.
 enum PromotionType {
@@ -22,4 +23,65 @@ class Configuration {
   final Map<PromotionType, Configuration> valueConfigurations;
 
   Configuration(this.thrownTypes, this.valueConfigurations);
+
+  /// Returns a configuration that is compatible with all of [configurations].
+  static Configuration? intersectConfigurations(List<Configuration> configurations) {
+    if (configurations.isEmpty) return null;
+
+    return Configuration(
+      [
+        // All of the types thrown by the first configuration...
+        ...configurations.first.thrownTypes.where(
+          // ...where every other configuration...
+          (thrownType) => configurations.skip(1).every(
+                // ...declares at least one thrown type...
+                (configuration) => configuration.thrownTypes.any(
+                  // ...which matches the type thrown by the first configuration.
+                  (declaredThrownType) =>
+                      TypeChecker.fromStatic(declaredThrownType).isAssignableFromType(thrownType),
+                ),
+              ),
+        ),
+      ],
+      {
+        for (final promotionType in PromotionType.values)
+          if (configurations.map((c) => c.valueConfigurations[promotionType]).nonNulls.toList()
+              case final configurationsToIntersect when configurationsToIntersect.isNotEmpty)
+            promotionType: intersectConfigurations(configurationsToIntersect)!,
+      },
+    );
+  }
+
+  /// Returns a configuration that every element of [configurations] is compatible with.
+  static Configuration? unionConfigurations(List<Configuration> configurations) {
+    if (configurations.isEmpty) return null;
+
+    final thrownTypes = <DartType>{};
+
+    for (final thrownType in configurations.expand((element) => element.thrownTypes)) {
+      if (thrownTypes.any(
+        (alreadyThrownType) =>
+            TypeChecker.fromStatic(alreadyThrownType).isAssignableFromType(thrownType),
+      )) {
+        continue;
+      }
+
+      thrownTypes.removeWhere(
+        (alreadyThrownType) =>
+            TypeChecker.fromStatic(thrownType).isAssignableFromType(alreadyThrownType),
+      );
+
+      thrownTypes.add(thrownType);
+    }
+
+    return Configuration(
+      thrownTypes.toList(),
+      {
+        for (final promotionType in PromotionType.values)
+          if (configurations.map((c) => c.valueConfigurations[promotionType]).nonNulls.toList()
+              case final configurationsToIntersect when configurationsToIntersect.isNotEmpty)
+            promotionType: unionConfigurations(configurationsToIntersect)!,
+      },
+    );
+  }
 }
