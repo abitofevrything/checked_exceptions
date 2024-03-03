@@ -1,0 +1,7 @@
+checked_exceptions:
+  - library: dart:core
+    element: int.parse
+    throws: []
+    value:
+      invoke:
+        throws: [FormatException]

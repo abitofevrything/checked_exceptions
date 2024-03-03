@@ -15,6 +15,8 @@ void foo() async {
   await future;
 
   ~Test();
+
+  int.parse('not an int');
 }
 
 void bar() {

@@ -6,6 +6,7 @@ import 'package:analyzer/dart/ast/ast.dart' hide Configuration;
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:checked_exceptions/src/configuration.dart';
+import 'package:checked_exceptions/src/configuration_overrides.dart';
 import 'package:checked_exceptions/src/expression_configuration_visitor.dart';
 import 'package:checked_exceptions/src/throw_finder.dart';
 import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
@@ -61,7 +62,14 @@ class ConfigurationBuilder {
   final DartType objectType;
   final DartType typeErrorType;
 
-  ConfigurationBuilder(this.session, {required this.objectType, required this.typeErrorType});
+  final ConfigurationOverrides overrides;
+
+  ConfigurationBuilder(
+    this.session, {
+    required this.objectType,
+    required this.typeErrorType,
+    required this.overrides,
+  });
 
   /// Create a [ConfigurationBuilder] for [session].
   static Future<ConfigurationBuilder> forSession(AnalysisSession session) async {
@@ -74,6 +82,7 @@ class ConfigurationBuilder {
       objectType: coreLibrary.typeProvider.objectType,
       typeErrorType:
           (coreLibrary.element.exportNamespace.get('TypeError') as InterfaceElement).thisType,
+      overrides: await ConfigurationOverrides.forSession(session),
     );
   }
 
@@ -115,6 +124,9 @@ class ConfigurationBuilder {
   ///
   /// This method should not be called directly. Instead, call [getElementConfiguration].
   Future<Configuration?> computeElementConfiguration(Element element) async {
+    final overriddenConfiguration = overrides.overrides[element.location];
+    if (overriddenConfiguration != null) return overriddenConfiguration;
+
     switch (element) {
       case ExecutableElement():
         final returnTypeConfiguration = await computeTypeConfiguration(element.returnType);

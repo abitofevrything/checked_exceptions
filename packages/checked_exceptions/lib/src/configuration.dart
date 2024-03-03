@@ -4,10 +4,13 @@ import 'package:custom_lint_builder/custom_lint_builder.dart';
 /// The way in which the value of an expression can cause errors to be thrown.
 enum PromotionType {
   /// The value is a [Future] that might throw errors when it is awaited.
-  await_,
+  await_('await'),
 
   /// The value is a [Function] that might throw errors when it is invoked.
-  invoke,
+  invoke('invoke');
+
+  final String key;
+  const PromotionType(this.key);
 }
 
 /// Represents the errors thrown by an expression and its value.

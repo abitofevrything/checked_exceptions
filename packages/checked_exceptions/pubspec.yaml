@@ -14,6 +14,7 @@ dependencies:
   custom_lint_builder: ^0.6.2
   checked_exceptions_annotations:
     path: ../checked_exceptions_annotations
+  yaml: ^3.1.2
 
 dev_dependencies:
   lints: ^3.0.0

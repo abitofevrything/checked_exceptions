@@ -11,4 +11,4 @@ dependencies:
 dev_dependencies:
   checked_exceptions:
     path: ../checked_exceptions
-  custom_lint: ^0.4.0
+  custom_lint: ^0.6.2
