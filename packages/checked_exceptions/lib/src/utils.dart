@@ -1,20 +1,17 @@
 import 'package:analyzer/dart/analysis/session.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
-import 'package:analyzer/dart/element/element.dart';
 import 'package:checked_exceptions/src/configuration_builder.dart';
 
-class ElementFinder<T extends Element> extends GeneralizingAstVisitor<List<Declaration>> {
-  @override
-  List<Declaration> visitNode(AstNode node) => [
-        for (final child in node.childEntities)
-          if (child is AstNode) ...child.accept(this)!,
-      ];
+class NodeFinder<T extends AstNode> extends UnifyingAstVisitor<List<T>> {
+  final bool Function(T)? predicate;
+
+  NodeFinder([this.predicate]);
 
   @override
-  List<Declaration> visitDeclaration(Declaration node) => [
-        if (node.declaredElement is T) node,
-        ...super.visitDeclaration(node)!,
+  List<T> visitNode(AstNode node) => [
+        if (node is T && predicate != null && predicate!(node)) node,
+        for (final childNode in node.childEntities.whereType<AstNode>()) ...childNode.accept(this)!
       ];
 }
 

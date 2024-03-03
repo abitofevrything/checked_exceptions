@@ -3,6 +3,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/error/listener.dart';
+import 'package:checked_exceptions/src/configuration.dart';
 import 'package:checked_exceptions/src/configuration_builder.dart';
 import 'package:checked_exceptions/src/throw_finder.dart';
 import 'package:checked_exceptions/src/utils.dart';
@@ -20,7 +21,7 @@ class UncaughtThrow extends DartLintRule {
   UncaughtThrow() : super(code: _code);
 
   final computedConfigurations =
-      <Element, (AnnotationConfiguration, Map<AstNode, List<DartType>>)>{};
+      <AstNode, (AnnotationConfiguration, Map<AstNode, List<DartType>>)>{};
 
   @override
   Future<void> startUp(
@@ -32,7 +33,10 @@ class UncaughtThrow extends DartLintRule {
     var unit = await resolver.getResolvedUnitResult();
     final builder = await unit.session.configurationBuilder;
 
-    final functions = unit.unit.accept(ElementFinder<ExecutableElement>())!;
+    final functions =
+        unit.unit.accept(NodeFinder<Declaration>((d) => d.declaredElement is ExecutableElement))!;
+    final functionExpressions =
+        unit.unit.accept(NodeFinder<FunctionExpression>((f) => f.staticParameterElement != null))!;
 
     await Future.wait(functions.map((function) async {
       final body = switch (function) {
@@ -49,8 +53,19 @@ class UncaughtThrow extends DartLintRule {
           .computeEquivalentAnnotationConfiguration(function.declaredElement as ExecutableElement);
       if (configuration == null) return null;
 
-      computedConfigurations[function.declaredElement!] =
-          (configuration, await body.accept(ThrowFinder(builder))!);
+      computedConfigurations[body] = (configuration, await body.accept(ThrowFinder(builder))!);
+    }));
+
+    await Future.wait(functionExpressions.map((functionExpression) async {
+      final configuration =
+          (await builder.getElementConfiguration(functionExpression.staticParameterElement!))
+              ?.valueConfigurations[PromotionType.invoke];
+      if (configuration == null) return;
+
+      computedConfigurations[functionExpression.body] = (
+        (canThrowUndeclaredErrors: false, thrownTypes: configuration.thrownTypes),
+        await functionExpression.body.accept(ThrowFinder(builder))!,
+      );
     }));
   }
 
