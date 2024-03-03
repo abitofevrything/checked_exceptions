@@ -131,45 +131,19 @@ class ConfigurationBuilder {
             element.hasImplicitType ? null : await computeTypeConfiguration(element.type);
         final initializerConfiguration = await getVariableElementInitializerConfiguration(element);
 
-        var valueConfigurations =
-            typeConfiguration ?? initializerConfiguration?.valueConfigurations ?? {};
+        final declaredConfiguration = await getVariableElementAnnotationConfiguration(
+          element,
+          element.isLate ? initializerConfiguration?.thrownTypes : null,
+          typeConfiguration ?? initializerConfiguration?.valueConfigurations,
+        );
+        if (declaredConfiguration != null) return declaredConfiguration;
 
-        final declaredConfiguration = getElementAnnotationConfiguration(element);
-        if (declaredConfiguration != null) {
-          final thrownTypes = [
-            ...declaredConfiguration.thrownTypes,
-            if (declaredConfiguration.canThrowUndeclaredErrors) objectType,
-          ];
-
-          final isFuture = futureTypeChecker.isAssignableFromType(element.type);
-          final isCallable = switch (element.type) {
-            InterfaceType type => type.element.children.any((element) =>
-                element is MethodElement && element.name == FunctionElement.CALL_METHOD_NAME),
-            FunctionType() => true,
-            _ => false,
-          };
-
-          if (isFuture && !isCallable) {
-            valueConfigurations = {
-              PromotionType.await_: Configuration(
-                thrownTypes,
-                valueConfigurations[PromotionType.await_]?.valueConfigurations ?? {},
-              ),
-            };
-          } else if (isCallable && !isFuture) {
-            valueConfigurations = {
-              PromotionType.invoke: Configuration(
-                thrownTypes,
-                valueConfigurations[PromotionType.invoke]?.valueConfigurations ?? {},
-              ),
-            };
-          }
+        if (element.enclosingElement case InterfaceElement interface) {
+          final inheritedConfiguration = await getInheritedConfiguration(interface, element);
+          if (inheritedConfiguration != null) return inheritedConfiguration;
         }
 
-        return Configuration(
-          element.isLate ? initializerConfiguration?.thrownTypes ?? [] : [],
-          valueConfigurations,
-        );
+        return initializerConfiguration;
       default:
         print('[BUILDER] Unhandled element type ${element.runtimeType}');
         return null;
@@ -430,6 +404,57 @@ class ConfigurationBuilder {
     if (initializer == null) return null;
 
     return await getExpressionConfiguration(initializer);
+  }
+
+  Future<Configuration?> getVariableElementAnnotationConfiguration(
+    VariableElement element,
+    List<DartType>? accessThrows,
+    TypeConfiguration? existingConfiguration,
+  ) async {
+    final annotationConfiguration = getElementAnnotationConfiguration(element);
+    if (annotationConfiguration == null) return null;
+
+    final thrownTypes = [
+      ...annotationConfiguration.thrownTypes,
+      if (annotationConfiguration.canThrowUndeclaredErrors) objectType,
+    ];
+
+    final isFuture = futureTypeChecker.isAssignableFromType(element.type);
+    final isCallable = switch (element.type) {
+      InterfaceType(:final element) => element.children.any(
+          (element) =>
+              element is MethodElement &&
+              !element.isStatic &&
+              element.name == FunctionElement.CALL_METHOD_NAME,
+        ),
+      FunctionType() => true,
+      _ => false,
+    };
+
+    var valueConfigurations = existingConfiguration;
+    if (isFuture && !isCallable) {
+      valueConfigurations = {
+        PromotionType.await_: Configuration(
+          thrownTypes,
+          existingConfiguration?[PromotionType.await_]?.valueConfigurations ?? {},
+        ),
+      };
+    } else if (isCallable && !isFuture) {
+      valueConfigurations = {
+        PromotionType.invoke: Configuration(
+          thrownTypes,
+          existingConfiguration?[PromotionType.invoke]?.valueConfigurations ?? {},
+        ),
+      };
+    } else {
+      // Ambiguous annotation or non-applicable.
+      return null;
+    }
+
+    return Configuration(
+      accessThrows ?? [],
+      valueConfigurations,
+    );
   }
 
   /// Returns the configuration information provided by annotations on [element], or `null` if
