@@ -226,20 +226,22 @@ class ConfigurationBuilder {
   /// If the element has annotations, this method returns the same a
   /// [getElementAnnotationConfiguration].
   Future<AnnotationConfiguration?> computeEquivalentAnnotationConfiguration(
-    ExecutableElement element,
-  ) async {
+    Element element, {
+    required bool isGetterOrSetter,
+    required bool isAsynchronous,
+  }) async {
     final annotatedConfiguration = getElementAnnotationConfiguration(element);
     if (annotatedConfiguration != null) return annotatedConfiguration;
 
     var configuration = await getElementConfiguration(element);
     if (configuration == null) return null;
 
-    if (element.kind != ElementKind.GETTER && element.kind != ElementKind.SETTER) {
+    if (isGetterOrSetter) {
       configuration = configuration.valueConfigurations[PromotionType.invoke];
       if (configuration == null) return null;
     }
 
-    if (element.isAsynchronous) {
+    if (isAsynchronous) {
       configuration = configuration.valueConfigurations[PromotionType.await_];
       if (configuration == null) return null;
     }

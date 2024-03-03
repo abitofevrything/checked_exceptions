@@ -3,7 +3,6 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/error/listener.dart';
-import 'package:checked_exceptions/src/configuration.dart';
 import 'package:checked_exceptions/src/configuration_builder.dart';
 import 'package:checked_exceptions/src/throw_finder.dart';
 import 'package:checked_exceptions/src/utils.dart';
@@ -49,21 +48,28 @@ class UncaughtThrow extends DartLintRule {
         return;
       }
 
-      final configuration = await builder
-          .computeEquivalentAnnotationConfiguration(function.declaredElement as ExecutableElement);
+      final element = function.declaredElement as ExecutableElement;
+
+      final configuration = await builder.computeEquivalentAnnotationConfiguration(
+        element,
+        isGetterOrSetter: element.kind == ElementKind.GETTER || element.kind == ElementKind.SETTER,
+        isAsynchronous: element.isAsynchronous,
+      );
       if (configuration == null) return null;
 
       computedConfigurations[body] = (configuration, await body.accept(ThrowFinder(builder))!);
     }));
 
     await Future.wait(functionExpressions.map((functionExpression) async {
-      final configuration =
-          (await builder.getElementConfiguration(functionExpression.staticParameterElement!))
-              ?.valueConfigurations[PromotionType.invoke];
+      final configuration = await builder.computeEquivalentAnnotationConfiguration(
+        functionExpression.staticParameterElement!,
+        isGetterOrSetter: false,
+        isAsynchronous: functionExpression.body.isAsynchronous,
+      );
       if (configuration == null) return;
 
       computedConfigurations[functionExpression.body] = (
-        (canThrowUndeclaredErrors: false, thrownTypes: configuration.thrownTypes),
+        configuration,
         await functionExpression.body.accept(ThrowFinder(builder))!,
       );
     }));

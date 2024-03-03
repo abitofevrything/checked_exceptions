@@ -17,6 +17,8 @@ void foo() async {
   ~Test();
 
   int.parse('not an int');
+
+  needsSafeArgument(() => throw Exception());
 }
 
 void bar() {
@@ -25,6 +27,8 @@ void bar() {
 
 @Throws<Exception>()
 void baz() {}
+
+void needsSafeArgument(@safe void Function() f) {}
 
 Future<void> awaitTime() async {
   throw Exception();
