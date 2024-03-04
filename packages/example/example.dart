@@ -18,6 +18,14 @@ void foo() async {
   int.parse('not an int');
 
   needsSafeArgument(() => throw Exception());
+  needsSafeArgument(baz);
+
+  @safe
+  var localFn = baz;
+  localFn = baz;
+
+  @safe
+  final foo = baz();
 }
 
 void bar() {
@@ -25,7 +33,7 @@ void bar() {
 }
 
 @Throws<Exception>()
-void baz() {}
+void Function() baz() => () {};
 
 void needsSafeArgument(@safe void Function() f) {}
 

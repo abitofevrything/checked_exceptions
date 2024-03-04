@@ -39,6 +39,37 @@ class Configuration {
 
   Configuration(this.throws, this.valueConfigurations);
 
+  /// Whether an expression with this configuration can be assigned to a variable with the [other]
+  /// configuration.
+  bool isCompatibleWith(Configuration other, {int atLevel = 0}) {
+    if (atLevel <= 0) {
+      if (throws.canThrowUndeclaredErrors && !other.throws.canThrowUndeclaredErrors) {
+        return other.throws.thrownTypes.any((element) => element.isDartCoreObject);
+      }
+
+      final exceptionTypeChecker = TypeChecker.fromUrl('dart:core#Exception');
+
+      for (final thrownType in throws.thrownTypes) {
+        if (!other.throws.thrownTypes.any((allowedType) =>
+            TypeChecker.fromStatic(allowedType).isAssignableFromType(thrownType))) {
+          if (!other.throws.canThrowUndeclaredErrors ||
+              exceptionTypeChecker.isAssignableFromType(thrownType)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    for (final MapEntry(:key, :value) in valueConfigurations.entries) {
+      final otherValue = other.valueConfigurations[key];
+      if (otherValue == null || value.isCompatibleWith(otherValue, atLevel: atLevel - 1)) continue;
+
+      return false;
+    }
+
+    return true;
+  }
+
   /// Returns a configuration that is compatible with all of [configurations].
   static Configuration? intersectConfigurations(List<Configuration> configurations) {
     if (configurations.isEmpty) return null;
