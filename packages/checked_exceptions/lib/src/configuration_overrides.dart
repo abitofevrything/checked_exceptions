@@ -133,6 +133,14 @@ class ConfigurationOverride {
       if (element == null) break;
       element = switch (element) {
         LibraryElement(:final scope) => scope.lookup(part).getter,
+        TypeAliasElement(aliasedType: FunctionType(:final parameters)) ||
+        VariableElement(type: FunctionType(:final parameters)) ||
+        FunctionTypedElement(:final parameters) =>
+          parameters.indexed
+              .singleWhereOrNull((element) =>
+                  element.$2.name == part || (element.$2.isPositional && '\$${element.$1}' == part))
+              ?.$2,
+        // Catches InstanceElement
         _ => element.children.singleWhereOrNull((element) => element.name == part),
       };
     }
