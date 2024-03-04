@@ -44,4 +44,18 @@ Future<void> awaitTime() async {
 class Test {
   @Throws<Exception>()
   void operator ~() {}
+
+  @safe
+  void safeMember() {}
+}
+
+class Test1 extends Test {
+  @override
+  void safeMember() => throw Exception();
+}
+
+class Test2 extends Test {
+  @override
+  @Throws<Exception>()
+  void safeMember() {}
 }
