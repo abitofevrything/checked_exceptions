@@ -99,12 +99,15 @@ class ConfigurationBuilder {
       return null;
     }
 
-    final cachedValue = _elementConfigurationCache[element];
+    final location = element.location;
+    if (location == null) return null;
+
+    final cachedValue = _elementConfigurationCache[location];
     if (cachedValue != null) return await cachedValue;
 
     return await runZoned(
       zoneValues: {recursionProtectionKey: true},
-      () => _elementConfigurationCache[element] = computeElementConfiguration(element),
+      () => _elementConfigurationCache[location] = computeElementConfiguration(element),
     );
   }
 
