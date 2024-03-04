@@ -9,20 +9,8 @@ import 'package:checked_exceptions/src/configuration.dart';
 import 'package:checked_exceptions/src/configuration_overrides.dart';
 import 'package:checked_exceptions/src/expression_configuration_visitor.dart';
 import 'package:checked_exceptions/src/throw_finder.dart';
-import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
 import 'package:collection/collection.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
-
-/// The subset of a [Configuration] that the type of an expression can represent.
-///
-/// This corresponds to [Configuration.valueConfigurations]. Given a type, we can deduce
-/// information about the value of an expression with that type, but not information about the
-/// expression itself.
-typedef TypeConfiguration = Map<PromotionType, Configuration>;
-
-/// The information provided by a combination [safe], [neverThrows], [Throws] and [ThrowsError]
-/// annotations on an element.
-typedef AnnotationConfiguration = ({List<DartType> thrownTypes, bool canThrowUndeclaredErrors});
 
 /// Provides the means to compute the [Configuration] for an expression.
 ///

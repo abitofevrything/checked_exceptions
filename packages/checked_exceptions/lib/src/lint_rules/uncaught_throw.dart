@@ -3,7 +3,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/error/listener.dart';
-import 'package:checked_exceptions/src/configuration_builder.dart';
+import 'package:checked_exceptions/src/configuration.dart';
 import 'package:checked_exceptions/src/throw_finder.dart';
 import 'package:checked_exceptions/src/utils.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
@@ -29,7 +29,7 @@ class UncaughtThrow extends DartLintRule {
   ) async {
     await super.startUp(resolver, context);
 
-    var unit = await resolver.getResolvedUnitResult();
+    final unit = await resolver.getResolvedUnitResult();
     final builder = await unit.session.configurationBuilder;
 
     final functions =

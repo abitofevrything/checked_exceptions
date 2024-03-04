@@ -1,5 +1,6 @@
 import 'package:analyzer/dart/element/type.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
+import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
 
 /// The way in which the value of an expression can cause errors to be thrown.
 enum PromotionType {
@@ -12,6 +13,17 @@ enum PromotionType {
   final String key;
   const PromotionType(this.key);
 }
+
+/// The subset of a [Configuration] that the type of an expression can represent.
+///
+/// This corresponds to [Configuration.valueConfigurations]. Given a type, we can deduce
+/// information about the value of an expression with that type, but not information about the
+/// expression itself.
+typedef TypeConfiguration = Map<PromotionType, Configuration>;
+
+/// The information provided by a combination [safe], [neverThrows], [Throws] and [ThrowsError]
+/// annotations on an element.
+typedef AnnotationConfiguration = ({List<DartType> thrownTypes, bool canThrowUndeclaredErrors});
 
 /// Represents the errors thrown by an expression and its value.
 class Configuration {
