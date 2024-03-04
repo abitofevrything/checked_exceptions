@@ -186,14 +186,9 @@ class ConfigurationOverride {
       }
 
       final valueConfigurations = <PromotionType, Configuration>{};
-      if (raw['value'] case Map declaredValueConfigurations) {
-        for (final MapEntry(:key, :value) in declaredValueConfigurations.entries) {
-          final promotionType =
-              PromotionType.values.firstWhereOrNull((element) => element.key == key);
-          if (promotionType == null) continue;
-          if (value is! Map) continue;
-
-          final parsedConfiguration = parseConfiguration(value);
+      for (final promotionType in PromotionType.values) {
+        if (raw[promotionType.key] case Map declaredValueConfiguration) {
+          final parsedConfiguration = parseConfiguration(declaredValueConfiguration);
           if (parsedConfiguration == null) continue;
           valueConfigurations[promotionType] = parsedConfiguration;
         }
