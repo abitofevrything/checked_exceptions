@@ -1,3 +1,4 @@
+import 'package:checked_exceptions/src/lint_rules/conflicting_configuration.dart';
 import 'package:checked_exceptions/src/lint_rules/uncaught_throw.dart';
 import 'package:checked_exceptions/src/lint_rules/unsafe_assignment.dart';
 import 'package:checked_exceptions/src/lint_rules/unsafe_override.dart';
@@ -9,5 +10,6 @@ class CheckedExceptionsPlugin extends PluginBase {
         UncaughtThrow(),
         UnsafeAssignment(),
         UnsafeOverride(),
+        ConflictingConfiguration(),
       ];
 }

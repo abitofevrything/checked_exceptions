@@ -1,6 +1,7 @@
 import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
 
 @neverThrows
+@safe
 void foo() async {
   bar();
   baz();
