@@ -36,7 +36,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     };
 
     return Configuration(
-      thrownTypes,
+      (thrownTypes: thrownTypes, canThrowUndeclaredErrors: false),
       (await builder.getExpressionConfiguration(node.expression))?.valueConfigurations ?? {},
     );
   }
@@ -52,7 +52,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     final nestedConfiguration = await builder.getExpressionConfiguration(node.target);
     if (nestedConfiguration == null) return null;
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       nestedConfiguration.valueConfigurations,
     );
   }
@@ -89,12 +89,20 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
 
     // If we find no throws, we want to return a configuration that throws nothing, and not `null`,
     // which would be returned by Configuration.unionConfigurations.
-    if (throws.isEmpty) return Configuration([], {PromotionType.invoke: Configuration([], {})});
+    if (throws.isEmpty) {
+      return Configuration(
+        (thrownTypes: [], canThrowUndeclaredErrors: false),
+        {
+          PromotionType.invoke:
+              Configuration((thrownTypes: [], canThrowUndeclaredErrors: false), {})
+        },
+      );
+    }
 
     return Configuration.unionConfigurations([
       for (final throws in throws.values)
         Configuration(
-          [],
+          (thrownTypes: [], canThrowUndeclaredErrors: false),
           {PromotionType.invoke: Configuration(throws, {})},
         ),
     ]);
@@ -106,7 +114,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (nestedConfiguration == null) return null;
 
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       nestedConfiguration.valueConfigurations,
     );
   }
@@ -134,12 +142,12 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
 
   @override
   Future<Configuration?> visitIsExpression(IsExpression node) async {
-    return Configuration([], {});
+    return Configuration((thrownTypes: [], canThrowUndeclaredErrors: false), {});
   }
 
   @override
   Future<Configuration?> visitLiteral(Literal node) async {
-    return Configuration([], {});
+    return Configuration((thrownTypes: [], canThrowUndeclaredErrors: false), {});
   }
 
   @override
@@ -148,7 +156,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (nestedConfiguration == null) return null;
 
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       nestedConfiguration.valueConfigurations,
     );
   }
@@ -159,7 +167,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (nestedConfiguration == null) return null;
 
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       nestedConfiguration.valueConfigurations,
     );
   }
@@ -171,7 +179,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
       if (node.operator.type == TokenType.BANG) {
         final nestedConfiguration = await builder.getExpressionConfiguration(node.operand);
         return Configuration(
-          [builder.typeErrorType],
+          (thrownTypes: [builder.typeErrorType], canThrowUndeclaredErrors: false),
           nestedConfiguration?.valueConfigurations ?? {},
         );
       }
@@ -198,7 +206,10 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (catchClause is! CatchClause) return null;
 
     return Configuration(
-      [catchClause.exceptionType?.type ?? builder.objectType],
+      (
+        thrownTypes: [catchClause.exceptionType?.type ?? builder.objectType],
+        canThrowUndeclaredErrors: false
+      ),
       {},
     );
   }
@@ -209,7 +220,7 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (type == null) return null;
 
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       await builder.computeTypeConfiguration(type) ?? {},
     );
   }
@@ -228,20 +239,23 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (type == null) return null;
 
     return Configuration(
-      [],
+      (thrownTypes: [], canThrowUndeclaredErrors: false),
       await builder.computeTypeConfiguration(type) ?? {},
     );
   }
 
   @override
   Future<Configuration?> visitTypeLiteral(TypeLiteral node) async {
-    return Configuration([], {});
+    return Configuration((thrownTypes: [], canThrowUndeclaredErrors: false), {});
   }
 
   @override
   Future<Configuration?> visitThrowExpression(ThrowExpression node) async {
     return Configuration(
-      [if (node.expression.staticType case final type?) type],
+      (
+        thrownTypes: [if (node.expression.staticType case final type?) type],
+        canThrowUndeclaredErrors: false,
+      ),
       (await builder.getExpressionConfiguration(node.expression))?.valueConfigurations ?? {},
     );
   }

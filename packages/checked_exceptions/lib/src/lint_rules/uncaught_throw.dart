@@ -19,8 +19,7 @@ class UncaughtThrow extends DartLintRule {
 
   UncaughtThrow() : super(code: _code);
 
-  final computedConfigurations =
-      <AstNode, (AnnotationConfiguration, Map<AstNode, List<DartType>>)>{};
+  final computedConfigurations = <AstNode, (Throws, Map<AstNode, List<DartType>>)>{};
 
   @override
   Future<void> startUp(
@@ -57,7 +56,15 @@ class UncaughtThrow extends DartLintRule {
       );
       if (configuration == null) return null;
 
-      computedConfigurations[body] = (configuration, await body.accept(ThrowFinder(builder))!);
+      final throws = await body.accept(ThrowFinder(builder))!;
+
+      computedConfigurations[body] = (
+        configuration,
+        {
+          for (final MapEntry(:key, :value) in throws.entries)
+            key: [...value.thrownTypes, if (value.canThrowUndeclaredErrors) builder.objectType]
+        },
+      );
     }));
 
     await Future.wait(functionExpressions.map((functionExpression) async {
@@ -68,9 +75,14 @@ class UncaughtThrow extends DartLintRule {
       );
       if (configuration == null) return;
 
+      final throws = await functionExpression.body.accept(ThrowFinder(builder))!;
+
       computedConfigurations[functionExpression.body] = (
         configuration,
-        await functionExpression.body.accept(ThrowFinder(builder))!,
+        {
+          for (final MapEntry(:key, :value) in throws.entries)
+            key: [...value.thrownTypes, if (value.canThrowUndeclaredErrors) builder.objectType]
+        },
       );
     }));
   }

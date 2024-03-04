@@ -108,6 +108,7 @@ class ConfigurationOverride {
     //     - <path to library>
     //     - <path to library>
     //   throws: [DartType, DartType]
+    //   allows_undeclared: true
     //   value:
     //     promotion_type:
     //       throws: [DartType, DartType]
@@ -198,7 +199,13 @@ class ConfigurationOverride {
         }
       }
 
-      return Configuration(thrownTypes, valueConfigurations);
+      return Configuration(
+        (
+          thrownTypes: thrownTypes,
+          canThrowUndeclaredErrors: raw['allows_undeclared'] == true,
+        ),
+        valueConfigurations,
+      );
     }
 
     final configuration = parseConfiguration(raw);

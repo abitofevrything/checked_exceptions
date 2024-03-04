@@ -136,7 +136,7 @@ class ConfigurationBuilder {
 
         final declaredConfiguration = await getVariableElementAnnotationConfiguration(
           element,
-          element.isLate ? initializerConfiguration?.thrownTypes : null,
+          element.isLate ? initializerConfiguration?.throws : null,
           typeConfiguration ?? initializerConfiguration?.valueConfigurations,
         );
         if (declaredConfiguration != null) return declaredConfiguration;
@@ -156,17 +156,16 @@ class ConfigurationBuilder {
   /// Get the [Configuration] for an [ExecutableElement] based solely on annotations on the element.
   Configuration? getExecutableElementAnnotationConfiguration(
     ExecutableElement element,
-    TypeConfiguration? returnTypeConfiguration,
+    ValueThrows? returnTypeConfiguration,
   ) {
     final annotationConfiguration = getElementAnnotationConfiguration(element);
     if (annotationConfiguration == null) return null;
 
-    final thrownTypes = [
-      ...annotationConfiguration.thrownTypes,
-      if (annotationConfiguration.canThrowUndeclaredErrors) objectType,
-    ];
-
-    return adaptThrowsToExecutableElementType(element, thrownTypes, returnTypeConfiguration);
+    return adaptThrowsToExecutableElementType(
+      element,
+      annotationConfiguration,
+      returnTypeConfiguration,
+    );
   }
 
   /// Convert a list of types thrown in the body of an [ExecutableElement] to a [Configuration].
@@ -177,8 +176,8 @@ class ConfigurationBuilder {
   /// - Asynchronous functions throw when their result is awaited (and not when invoked).
   Configuration adaptThrowsToExecutableElementType(
     ExecutableElement element,
-    List<DartType> thrownTypes,
-    TypeConfiguration? returnTypeConfiguration,
+    Throws thrownTypes,
+    ValueThrows? returnTypeConfiguration,
   ) {
     var configuration = Configuration(
       thrownTypes,
@@ -187,14 +186,14 @@ class ConfigurationBuilder {
 
     if (element.isAsynchronous) {
       configuration = Configuration(
-        [],
+        (thrownTypes: [], canThrowUndeclaredErrors: false),
         {PromotionType.await_: configuration},
       );
     }
 
     if (element.kind != ElementKind.SETTER && element.kind != ElementKind.GETTER) {
       configuration = Configuration(
-        [],
+        (thrownTypes: [], canThrowUndeclaredErrors: false),
         {PromotionType.invoke: configuration},
       );
     }
@@ -213,18 +212,15 @@ class ConfigurationBuilder {
   ///
   /// If the element has annotations, this method returns the same a
   /// [getElementAnnotationConfiguration].
-  Future<AnnotationConfiguration?> computeEquivalentAnnotationConfiguration(
+  Future<Throws?> computeEquivalentAnnotationConfiguration(
     Element element, {
     required bool isGetterOrSetter,
     required bool isAsynchronous,
   }) async {
-    final annotatedConfiguration = getElementAnnotationConfiguration(element);
-    if (annotatedConfiguration != null) return annotatedConfiguration;
-
     var configuration = await getElementConfiguration(element);
     if (configuration == null) return null;
 
-    if (isGetterOrSetter) {
+    if (!isGetterOrSetter) {
       configuration = configuration.valueConfigurations[PromotionType.invoke];
       if (configuration == null) return null;
     }
@@ -234,10 +230,7 @@ class ConfigurationBuilder {
       if (configuration == null) return null;
     }
 
-    return (
-      canThrowUndeclaredErrors: false,
-      thrownTypes: configuration.thrownTypes,
-    );
+    return configuration.throws;
   }
 
   /// Compute the configuration for [element] based solely on the class members it overrides.
@@ -295,7 +288,7 @@ class ConfigurationBuilder {
   /// thrown in its body.
   Future<Configuration?> getExecutableElementThrowsConfiguration(
     ExecutableElement element,
-    TypeConfiguration? returnTypeConfiguration,
+    ValueThrows? returnTypeConfiguration,
   ) async {
     final parsedLibrary = await session.getResolvedLibraryByElement(element.library);
     if (parsedLibrary is! ResolvedLibraryResult) {
@@ -322,28 +315,16 @@ class ConfigurationBuilder {
       return null;
     }
 
-    final throws = await body.accept(ThrowFinder(this))!;
-    final thrownTypes = <DartType>{};
-
-    for (final thrownType in throws.values.expand((element) => element)) {
-      if (thrownTypes.any(
-        (alreadyThrownType) =>
-            TypeChecker.fromStatic(alreadyThrownType).isAssignableFromType(thrownType),
-      )) {
-        continue;
-      }
-
-      thrownTypes.removeWhere(
-        (alreadyThrownType) =>
-            TypeChecker.fromStatic(thrownType).isAssignableFromType(alreadyThrownType),
-      );
-
-      thrownTypes.add(thrownType);
-    }
+    final bodyThrows = await body.accept(ThrowFinder(this))!;
 
     return adaptThrowsToExecutableElementType(
       element,
-      List.of(thrownTypes),
+      bodyThrows.isEmpty
+          ? (thrownTypes: [], canThrowUndeclaredErrors: false)
+          : Configuration.unionConfigurations([
+              for (final throws in bodyThrows.values) Configuration(throws, {}),
+            ])!
+              .throws,
       returnTypeConfiguration,
     );
   }
@@ -388,16 +369,11 @@ class ConfigurationBuilder {
 
   Future<Configuration?> getVariableElementAnnotationConfiguration(
     VariableElement element,
-    List<DartType>? accessThrows,
-    TypeConfiguration? existingConfiguration,
+    Throws? accessThrows,
+    ValueThrows? existingConfiguration,
   ) async {
     final annotationConfiguration = getElementAnnotationConfiguration(element);
     if (annotationConfiguration == null) return null;
-
-    final thrownTypes = [
-      ...annotationConfiguration.thrownTypes,
-      if (annotationConfiguration.canThrowUndeclaredErrors) objectType,
-    ];
 
     final isFuture = futureTypeChecker.isAssignableFromType(element.type);
     final isCallable = switch (element.type) {
@@ -415,14 +391,14 @@ class ConfigurationBuilder {
     if (isFuture && !isCallable) {
       valueConfigurations = {
         PromotionType.await_: Configuration(
-          thrownTypes,
+          annotationConfiguration,
           existingConfiguration?[PromotionType.await_]?.valueConfigurations ?? {},
         ),
       };
     } else if (isCallable && !isFuture) {
       valueConfigurations = {
         PromotionType.invoke: Configuration(
-          thrownTypes,
+          annotationConfiguration,
           existingConfiguration?[PromotionType.invoke]?.valueConfigurations ?? {},
         ),
       };
@@ -432,14 +408,14 @@ class ConfigurationBuilder {
     }
 
     return Configuration(
-      accessThrows ?? [],
+      accessThrows ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
       valueConfigurations,
     );
   }
 
   /// Returns the configuration information provided by annotations on [element], or `null` if
   /// [element] has no annotations.
-  AnnotationConfiguration? getElementAnnotationConfiguration(
+  Throws? getElementAnnotationConfiguration(
     Element element,
   ) {
     final thrownTypes = <DartType>[];
@@ -469,31 +445,28 @@ class ConfigurationBuilder {
   }
 
   /// Compute the configuration information provided by a type to any expression of that type.
-  Future<TypeConfiguration?> computeTypeConfiguration(
+  Future<ValueThrows?> computeTypeConfiguration(
     DartType type,
   ) async {
     switch (type) {
       case FunctionType():
-        List<DartType>? thrownTypes;
+        Throws? throws;
         final returnTypeConfiguration = await computeTypeConfiguration(type.returnType);
 
         if (type.alias?.element case final aliasElement?) {
           final declaredConfiguration = getElementAnnotationConfiguration(aliasElement);
           if (declaredConfiguration != null) {
-            thrownTypes = [
-              ...declaredConfiguration.thrownTypes,
-              if (declaredConfiguration.canThrowUndeclaredErrors) objectType,
-            ];
+            throws = declaredConfiguration;
           } else {
             return await computeTypeConfiguration(aliasElement.aliasedType);
           }
         }
 
-        if (thrownTypes == null && returnTypeConfiguration == null) return null;
+        if (throws == null && returnTypeConfiguration == null) return null;
 
         return {
           PromotionType.invoke: Configuration(
-            thrownTypes ?? [],
+            throws ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
             returnTypeConfiguration ?? {},
           ),
         };
@@ -511,23 +484,15 @@ class ConfigurationBuilder {
           final aliasElement? => getElementAnnotationConfiguration(aliasElement),
           _ => null,
         };
-        final declaredThrownTypes = switch (declaredConfiguration) {
-          final configuration? => [
-              ...configuration.thrownTypes,
-              if (configuration.canThrowUndeclaredErrors) objectType,
-            ],
-          _ => null,
-        };
-
         return {
           if (futureInstanciation != null)
             PromotionType.await_: Configuration(
-              declaredThrownTypes ?? [],
+              declaredConfiguration ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
               await computeTypeConfiguration(futureInstanciation.typeArguments.single) ?? {},
             ),
           if (callMethod != null)
             PromotionType.invoke: Configuration(
-              declaredThrownTypes ?? [],
+              declaredConfiguration ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
               (await getElementConfiguration(callMethod))?.valueConfigurations ?? {},
             ),
         };
