@@ -27,6 +27,8 @@ class UnsafeAssignment extends DartLintRule {
     final unit = await resolver.getResolvedUnitResult();
     final builder = await unit.session.configurationBuilder;
 
+    computedAssignments.clear();
+
     final arguments =
         unit.unit.accept(NodeFinder<Expression>((e) => e.staticParameterElement != null))!;
     final assignments = unit.unit.accept(

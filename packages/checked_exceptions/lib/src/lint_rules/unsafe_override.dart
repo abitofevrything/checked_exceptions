@@ -28,6 +28,8 @@ class UnsafeOverride extends DartLintRule {
     final unit = await resolver.getResolvedUnitResult();
     final builder = await unit.session.configurationBuilder;
 
+    computedConfigurations.clear();
+
     final classMembers = unit.unit.accept(NodeFinder<Declaration>(
       (d) => (d is MethodDeclaration && !d.isStatic) || (d is FieldDeclaration && !d.isStatic),
     ))!;

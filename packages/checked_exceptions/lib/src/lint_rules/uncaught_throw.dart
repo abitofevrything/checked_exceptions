@@ -31,6 +31,8 @@ class UncaughtThrow extends DartLintRule {
     final unit = await resolver.getResolvedUnitResult();
     final builder = await unit.session.configurationBuilder;
 
+    computedConfigurations.clear();
+
     final functions =
         unit.unit.accept(NodeFinder<Declaration>((d) => d.declaredElement is ExecutableElement))!;
     final functionExpressions =
