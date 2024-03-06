@@ -263,12 +263,16 @@ class ConfigurationBuilder {
       elementsToVisit.remove(superclassElement);
       visitedElements.add(superclassElement);
 
-      if (element.isPrivate && element.library != superclassElement.library) continue;
+      if ((element.isPrivate && element.library != superclassElement.library) ||
+          (element is ClassMemberElement && element.isStatic) || element is ConstructorElement) {
+        continue;
+      }
 
       var foundMatching = false;
 
       for (final superclassElement in superclassElement.children) {
-        if (element.name == superclassElement.name) {
+        if (element.name == superclassElement.name &&
+            (superclassElement is ClassMemberElement && !superclassElement.isStatic) && superclassElement is! ConstructorElement) {
           foundMatching = true;
           inheritedConfigurationFutures.add(getElementConfiguration(superclassElement));
           break;
