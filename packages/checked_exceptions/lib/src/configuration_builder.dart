@@ -23,7 +23,8 @@ class ConfigurationBuilder {
   final _recursionProtectionKey = Object();
 
   final Expando<Future<Configuration?>> _expressionConfigurationCache = Expando();
-  final Expando<Future<Configuration?>> _elementConfigurationCache = Expando();
+  final Expando<({Zone zone, Future<Configuration?> result})> _elementConfigurationCache =
+      Expando();
 
   final safeTypeChecker = TypeChecker.fromName(
     'Safe',
@@ -94,21 +95,23 @@ class ConfigurationBuilder {
   ///
   /// This method caches results.
   Future<Configuration?> getElementConfiguration(Element element) async {
-    final recursionProtectionKey = (element, _recursionProtectionKey);
-    if (Zone.current[recursionProtectionKey] != null) {
-      return null;
-    }
-
     final location = element.location;
     if (location == null) return null;
 
-    final cachedValue = _elementConfigurationCache[location];
-    if (cachedValue != null) return await cachedValue;
+    final cachedComputation = _elementConfigurationCache[location];
+    final recursionProtectionKey = (location, _recursionProtectionKey);
+    if (cachedComputation != null) {
+      if (cachedComputation.zone[recursionProtectionKey] != null) {
+        return null;
+      }
+      return await cachedComputation.result;
+    }
 
     return await runZoned(
       zoneValues: {recursionProtectionKey: true},
-      () => _elementConfigurationCache[location] = computeElementConfiguration(element),
-    );
+      () => _elementConfigurationCache[location] =
+          (zone: Zone.current, result: computeElementConfiguration(element)),
+    ).result;
   }
 
   /// Perform the computation for [getElementConfiguration].
