@@ -94,9 +94,15 @@ class ConfigurationBuilder {
     final location = element.location;
     if (location == null) return null;
 
-    final cachedComputation = _elementConfigurationCache[location];
     final recursionProtectionKey = (location, _recursionProtectionKey);
+    if (Zone.current[recursionProtectionKey] != null) {
+      // Don't recompute the configuration if we're already computing it.
+      return null;
+    }
+
+    final cachedComputation = _elementConfigurationCache[location];
     if (cachedComputation != null) {
+      // Don't use a computation that is depending on our computation.
       if (cachedComputation.zone[recursionProtectionKey] != null) {
         return null;
       }
