@@ -26,32 +26,42 @@ class ConfigurationOverrides {
 
   ConfigurationOverrides(this.overrides);
 
+  static Future<ConfigurationOverrides?> loadFile(AnalysisSession session, Uri uri) async {
+    final path = session.uriConverter.uriToPath(uri);
+    if (path == null) return null;
+
+    final file = session.resourceProvider.getFile(path);
+    if (!file.exists) return null;
+
+    try {
+      final document = loadYaml(file.readAsStringSync());
+
+      if (document case {'checked_exceptions': List rawOverrides}) {
+        final declaredOverrides = await Future.wait(rawOverrides
+            .whereType<Map>()
+            .map((raw) => ConfigurationOverride.parseForSession(session, raw)));
+
+        final overrides = <ElementLocation, Configuration>{};
+        for (final override in declaredOverrides.nonNulls) {
+          overrides[override.location] = override.configuration;
+        }
+
+        return ConfigurationOverrides(overrides);
+      }
+
+      return null;
+    } on YamlException {
+      return null;
+    }
+  }
+
   /// Compute the [ConfigurationOverrides] for the given [session].
   static Future<ConfigurationOverrides> forSession(AnalysisSession session) async {
     final overrides = <ElementLocation, Configuration>{};
 
     Future<void> loadConfigurationFile(Uri uri) async {
-      final path = session.uriConverter.uriToPath(uri);
-      if (path == null) return;
-
-      final file = session.resourceProvider.getFile(path);
-      if (!file.exists) return;
-
-      try {
-        final document = loadYaml(file.readAsStringSync());
-
-        if (document case {'checked_exceptions': List rawOverrides}) {
-          final declaredOverrides = await Future.wait(rawOverrides
-              .whereType<Map>()
-              .map((raw) => ConfigurationOverride.parseForSession(session, raw)));
-
-          for (final override in declaredOverrides.nonNulls) {
-            overrides[override.location] = override.configuration;
-          }
-        }
-      } on YamlException {
-        // Pass.
-      }
+      final fileOverrides = await loadFile(session, uri);
+      if (fileOverrides != null) overrides.addAll(fileOverrides.overrides);
     }
 
     // First load the default configuration
