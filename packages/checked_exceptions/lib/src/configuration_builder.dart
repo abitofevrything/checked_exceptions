@@ -22,7 +22,6 @@ import 'package:custom_lint_builder/custom_lint_builder.dart';
 class ConfigurationBuilder {
   final _recursionProtectionKey = Object();
 
-  final Expando<Future<Configuration?>> _expressionConfigurationCache = Expando();
   final Expando<({Zone zone, Future<Configuration?> result})> _elementConfigurationCache =
       Expando();
 
@@ -78,14 +77,8 @@ class ConfigurationBuilder {
   /// Get the [Configuration] of an [Expression].
   ///
   /// Returns `null` if no configuration could be generated.
-  ///
-  /// This method caches results.
   Future<Configuration?> getExpressionConfiguration(Expression node) async {
-    final cachedValue = _expressionConfigurationCache[node];
-    if (cachedValue != null) return await cachedValue;
-
-    return await (_expressionConfigurationCache[node] =
-        node.accept(ExpressionConfigurationVisitor(this))!);
+    return await node.accept<Future<Configuration?>>(ExpressionConfigurationVisitor(this))!;
   }
 
   /// Get the [Configuration] of an [Element]. This is the configuration of any [Identifier] whose
