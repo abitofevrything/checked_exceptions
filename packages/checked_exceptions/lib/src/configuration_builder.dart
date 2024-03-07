@@ -504,6 +504,10 @@ class ConfigurationBuilder {
               (await getElementConfiguration(callMethod))?.valueConfigurations ?? {},
             ),
         };
+      case VoidType():
+        return null;
+      case TypeParameterType():
+        return null; // TODO
       default:
         print('[BUILDER] Unhandled type ${type.runtimeType}');
         return null;
