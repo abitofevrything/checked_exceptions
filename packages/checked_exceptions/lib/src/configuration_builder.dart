@@ -263,7 +263,8 @@ class ConfigurationBuilder {
       visitedElements.add(superclassElement);
 
       if ((element.isPrivate && element.library != superclassElement.library) ||
-          (element is ClassMemberElement && element.isStatic) || element is ConstructorElement) {
+          (element is ClassMemberElement && element.isStatic) ||
+          element is ConstructorElement) {
         continue;
       }
 
@@ -271,7 +272,8 @@ class ConfigurationBuilder {
 
       for (final superclassElement in superclassElement.children) {
         if (element.name == superclassElement.name &&
-            (superclassElement is ClassMemberElement && !superclassElement.isStatic) && superclassElement is! ConstructorElement) {
+            (superclassElement is ClassMemberElement && !superclassElement.isStatic) &&
+            superclassElement is! ConstructorElement) {
           foundMatching = true;
           inheritedConfigurationFutures.add(getElementConfiguration(superclassElement));
           break;
