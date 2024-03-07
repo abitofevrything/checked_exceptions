@@ -60,7 +60,10 @@ class ConfigurationBuilder {
   });
 
   /// Create a [ConfigurationBuilder] for [session].
-  static Future<ConfigurationBuilder> forSession(AnalysisSession session) async {
+  static Future<ConfigurationBuilder> forSession(
+    AnalysisSession session, {
+    ConfigurationOverrides? overrides,
+  }) async {
     final coreLibrary =
         await session.getResolvedLibrary(session.uriConverter.uriToPath(Uri.parse('dart:core'))!)
             as ResolvedLibraryResult;
@@ -70,7 +73,7 @@ class ConfigurationBuilder {
       objectType: coreLibrary.typeProvider.objectType,
       typeErrorType:
           (coreLibrary.element.exportNamespace.get('TypeError') as InterfaceElement).thisType,
-      overrides: await ConfigurationOverrides.forSession(session),
+      overrides: overrides ?? await ConfigurationOverrides.forSession(session),
     );
   }
 
