@@ -142,6 +142,8 @@ class ConfigurationOverride {
     for (final part in elementParts) {
       if (element == null) break;
       element = switch (element) {
+        ClassElement() when part == 'new' =>
+          element.constructors.singleWhereOrNull((element) => element.isDefaultConstructor),
         LibraryElement(:final scope) => scope.lookup(part).getter,
         TypeAliasElement(aliasedType: FunctionType(:final parameters)) ||
         VariableElement(type: FunctionType(:final parameters)) ||
