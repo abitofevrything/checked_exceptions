@@ -182,8 +182,11 @@ class ConfigurationOverride {
     );
 
     Configuration? parseConfiguration(Map raw) {
+      var isConfigurationMap = false;
+
       final thrownTypes = <DartType>[];
       if (raw['throws'] case List declaredThrows) {
+        isConfigurationMap = true;
         for (final declaredThrownType in declaredThrows.whereType<String>()) {
           final source = StringSource(declaredThrownType, null);
           final scanner = Scanner.fasta(source, errorListener)
@@ -201,18 +204,19 @@ class ConfigurationOverride {
           if (thrownType == null) continue;
           thrownTypes.add(thrownType);
         }
-      } else {
-        return null;
       }
 
       final valueConfigurations = <PromotionType, Configuration>{};
       for (final promotionType in PromotionType.values) {
         if (raw[promotionType.key] case Map declaredValueConfiguration) {
+          isConfigurationMap = true;
           final parsedConfiguration = parseConfiguration(declaredValueConfiguration);
           if (parsedConfiguration == null) continue;
           valueConfigurations[promotionType] = parsedConfiguration;
         }
       }
+
+      if (!isConfigurationMap) return null;
 
       return Configuration(
         (
