@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart' hide Configuration;
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:checked_exceptions/src/configuration.dart';
@@ -42,9 +43,36 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
   }
 
   @override
+  Future<Configuration?> visitAssignmentExpression(AssignmentExpression node) async {
+    final valueConfiguration = await builder.getExpressionConfiguration(node.leftHandSide);
+    final writeElement = node.writeElement;
+    if (valueConfiguration == null ||
+        writeElement is! PropertyAccessorElement ||
+        !writeElement.isSetter) {
+      return null;
+    }
+
+    final writeConfiguration = await builder.getElementConfiguration(writeElement);
+    if (writeConfiguration == null) return null;
+
+    return Configuration(
+      writeConfiguration.throws,
+      valueConfiguration.valueConfigurations,
+    );
+  }
+
+  @override
   Future<Configuration?> visitAwaitExpression(AwaitExpression node) async {
     final nestedConfiguration = await builder.getExpressionConfiguration(node.expression);
     return nestedConfiguration?.valueConfigurations[PromotionType.await_];
+  }
+
+  @override
+  Future<Configuration?> visitBinaryExpression(BinaryExpression node) async {
+    final method = node.staticElement;
+    if (method == null) return null;
+    return (await builder.getElementConfiguration(method))
+        ?.valueConfigurations[PromotionType.invoke];
   }
 
   @override
