@@ -1,0 +1,118 @@
+name: dummy_project
+description: A dummy project that depends on various packages we pre-generate the configuration for.
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  # dart.dev packages
+  http: any
+  # path: any
+  # crypto: any
+  # logging: any
+  # http_parser: any
+  # characters: any
+  # ffi: any
+  # convert: any
+  # collection: any
+  # async: any
+  # args: any
+  # js: any
+  # test: any
+  # grpc: any
+  # fixnum: any
+  # matcher: any
+  # typed_data: any
+  # intl: any
+  # meta: any
+  # web: any
+  # os_detect: any
+  # http2: any
+
+  # tools.dart.dev packages
+  # mime: any
+  # stack_trace: any
+  # yaml: any
+  # stream_transform: any
+  # pub_semver: any
+  # shelf_router: any
+  # graphs: any
+  # oauth2: any
+  # json_rpc_2: any
+  # shelf_proxy: any
+  # shelf_static: any
+  # code_builder: any
+  # stream_channel: any
+  # io: any
+  # ffigen: any
+  # csslib: any
+  # http_multi_server: any
+  # dartdoc: any
+  # source_span: any
+  # yaml_edit: any
+  # boolean_selector: any
+  # web_socket_channel: any
+  # browser_launcher: any
+  # shelf: any
+  # html: any
+  # watcher: any
+  # shelf_web_socket: any
+  # markdown: any
+  # pool: any
+  # package_config: any
+  # glob: any
+  # source_gen: any
+  # shelf_router_generator: any
+  # dart_style: any
+  # cli_util: any
+  # vm_service: any
+  # test_api: any
+  # test_process: any
+  # analyzer: any
+  # string_scanner: any
+  # timing: any
+  # term_glyph: any
+  # pubspec_parse: any
+  # dwds: any
+  # build_config: any
+  # pana: any
+  # analyzer_plugin: any
+  # dds_service_extensions: any
+  # cli_config: any
+  # native_stack_traces: any
+  # clock: any
+  # bazel_worker: any
+  # webdev: any
+  # source_map_stack_trace: any
+  # sse: any
+  # extension_discovery: any
+  # build_test: any
+  # benchmark_harness: any
+  # build_resolvers: any
+  # build_modules: any
+  # scratch_space: any
+  # source_maps: any
+  # coverage: any
+  # vm_service_interface: any
+  # test_reflective_loader: any
+  # shelf_packages_handler: any
+  # test_descriptor: any
+  # shelf_test_handler: any
+  # vm_service_protos: any
+
+  # labs.dart.dev packages
+  # gcloud: any
+  # native_assets_cli: any
+  # checks: any
+  # jnigen: any
+  # native_toolchain_c: any
+  # native_synchronization: any
+  # memory_usage: any
+  # messages: any
+  # messages_serializer: any
+  # messages_builder: any
+
+
+  
+

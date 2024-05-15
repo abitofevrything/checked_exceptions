@@ -1,0 +1,333 @@
+# Format is
+# checked_exceptions:
+#   - library: <path to library>
+#     element: Element.name
+#     imports:
+#       - <path to library>
+#       - <path to library>
+#     throws: [DartType, DartType]
+#     allows_undeclared: true
+#     promotion_type:
+#       throws: [DartType, DartType]
+#       ...
+
+checked_exceptions:
+  - library: dart:core
+    element: Object.new
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: Object.hashCode
+    throws: []
+    
+  - library: dart:core
+    element: Object.runtimeType
+    throws: []
+    
+  - library: dart:core
+    element: Object.toString
+    invoke:
+      throws: []
+    
+  - library: dart:core
+    element: Object.==
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.isFinite
+    throws: []
+
+  - library: dart:core
+    element: num.isInfinite
+    throws: []
+
+  - library: dart:core
+    element: num.isNan
+    throws: []
+
+  - library: dart:core
+    element: num.isNegative
+    throws: []
+
+  - library: dart:core
+    element: num.sign
+    throws: []
+
+  - library: dart:core
+    element: num.abs
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.ceil
+    invoke:
+      throws:
+        - UnsupportedError # When called on an infinite value
+
+  - library: dart:core
+    element: num.ceilToDouble
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.clamp
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.floor
+    invoke:
+      throws:
+        - UnsupportedError # When called on an infinite value
+
+  - library: dart:core
+    element: num.floorToDouble
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.remainder
+    invoke:
+      throws:
+        # Should be IntegerDivisionByZeroException, but that's deprecated.
+        - UnsupportedError # When called with 0 as the argument
+
+  - library: dart:core
+    element: num.round
+    invoke:
+      throws:
+        - UnsupportedError # When called on an infinite value
+
+  - library: dart:core
+    element: num.roundToDouble
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.toDouble
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.toInt
+    invoke:
+      throws:
+        - UnsupportedError # When called on an infinite value
+
+  - library: dart:core
+    element: num.toStringAsExponential
+    invoke:
+      throws:
+        - RangeError # When called with invalid fractionDigits
+
+  - library: dart:core
+    element: num.toStringAsFixed
+    invoke:
+      throws:
+        - RangeError # When called with invalid fractionDigits
+
+  - library: dart:core
+    element: num.toStringAsPrecision
+    invoke:
+      throws:
+        - RangeError # When called with invalid precision
+
+  - library: dart:core
+    element: num.truncateToDouble
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.%
+    invoke:
+      throws:
+        # Should be IntegerDivisionByZeroException, but that's deprecated.
+        - UnsupportedError # When called with 0 as the argument
+
+  - library: dart:core
+    element: num.*
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.+
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.-
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num./
+    invoke:
+      throws:
+        # Should be IntegerDivisionByZeroException, but that's deprecated.
+        - UnsupportedError # When called with 0 as the argument
+
+  - library: dart:core
+    element: num.<
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.<=
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.>
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.>=
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.unary-
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: num.~/
+    invoke:
+      throws:
+        # Should be IntegerDivisionByZeroException, but that's deprecated.
+        - UnsupportedError # When called with 0 as the argument
+
+  - library: dart:core
+    element: num.parse
+    invoke:
+      throws:
+        - FormatException # When called with an incorrectly formatted argument
+
+  - library: dart:core
+    element: num.tryParse
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: double.parse
+    invoke:
+      throws:
+        - FormatException # When called with an incorrectly formatted argument
+
+  - library: dart:core
+    element: double.tryParse
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: double.infinity
+    throws: []
+
+  - library: dart:core
+    element: double.maxFinite
+    throws: []
+
+  - library: dart:core
+    element: double.minPositive
+    throws: []
+
+  - library: dart:core
+    element: double.nan
+    throws: []
+
+  - library: dart:core
+    element: double.negativeInfinity
+    throws: []
+
+  - library: dart:core
+    element: int.parse
+    invoke:
+      throws:
+        - FormatException # When called with an incorrectly formatted argument
+
+  - library: dart:core
+    element: int.tryParse
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.isEven
+    throws: []
+
+  - library: dart:core
+    element: int.isOdd
+    throws: []
+
+  - library: dart:core
+    element: int.gcd
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.modInverse
+    invoke:
+      throws:
+        - Exception # When the target and the argument are not coprime
+
+  - library: dart:core
+    element: int.modPow
+    invoke:
+      throws:
+        - RangeError # When the exponent is not positive and when the modulo is negative
+
+  - library: dart:core
+    element: int.toRadixString
+    invoke:
+      throws:
+        - RangeError # When the radix is invalid
+
+  - library: dart:core
+    element: int.toSigned
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.toUnsigned
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.&
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.<<
+    invoke:
+      throws:
+        - ArgumentError # If the argument is negative
+
+  - library: dart:core
+    element: int.>>
+    invoke:
+      throws:
+        - ArgumentError # If the argument is negative
+
+  - library: dart:core
+    element: int.>>>
+    invoke:
+      throws:
+        - ArgumentError # If the argument is negative
+
+  - library: dart:core
+    element: int.^
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.|
+    invoke:
+      throws: []
+
+  - library: dart:core
+    element: int.~
+    invoke:
+      throws: []

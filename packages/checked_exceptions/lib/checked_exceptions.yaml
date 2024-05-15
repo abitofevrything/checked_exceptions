@@ -1,6 +1,17 @@
+# Format is
+# checked_exceptions:
+#   - library: <path to library>
+#     element: Element.name
+#     imports:
+#       - <path to library>
+#       - <path to library>
+#     throws: [DartType, DartType]
+#     allows_undeclared: true
+#     promotion_type:
+#       throws: [DartType, DartType]
+#       ...
+
+# This file is generated. Run tool/dump_element_configurations.dart to regenerate it.
+# Edit tool/bootstrap_checked_exceptions.yaml to manually configure SDK configuration overrides.
+
 checked_exceptions:
-  - library: dart:core
-    element: int.parse
-    throws: []
-    invoke:
-      throws: [FormatException]
