@@ -8,12 +8,16 @@ import 'package:custom_lint_builder/custom_lint_builder.dart';
 class UnsafeAssignment extends DartLintRule {
   static const _code = LintCode(
     name: 'unsafe_assignment',
-    problemMessage: "This expression can't be used here because its configuration is incompatible",
+    problemMessage:
+        "This expression can't be used here because its configuration is incompatible",
     errorSeverity: ErrorSeverity.ERROR,
   );
 
-  final computedAssignments =
-      <Expression, ({Configuration parameterConfiguration, Configuration argumentConfiguration})>{};
+  final computedAssignments = <Expression,
+      ({
+    Configuration parameterConfiguration,
+    Configuration argumentConfiguration
+  })>{};
 
   UnsafeAssignment() : super(code: _code);
 
@@ -29,19 +33,21 @@ class UnsafeAssignment extends DartLintRule {
 
     computedAssignments.clear();
 
-    final arguments =
-        unit.unit.accept(NodeFinder<Expression>((e) => e.staticParameterElement != null))!;
-    final assignments = unit.unit.accept(
-        NodeFinder<AssignmentExpression>((e) => e.rightHandSide.staticParameterElement == null))!;
-    final variableDeclarations = unit.unit.accept(NodeFinder<VariableDeclaration>(
-        (d) => d.initializer != null && d.declaredElement != null))!;
+    final arguments = unit.unit.accept(
+        NodeFinder<Expression>((e) => e.staticParameterElement != null))!;
+    final assignments = unit.unit.accept(NodeFinder<AssignmentExpression>(
+        (e) => e.rightHandSide.staticParameterElement == null))!;
+    final variableDeclarations = unit.unit.accept(
+        NodeFinder<VariableDeclaration>(
+            (d) => d.initializer != null && d.declaredElement != null))!;
 
     await Future.wait(arguments.map((argument) async {
-      final parameterConfiguration =
-          await builder.getElementConfiguration(argument.staticParameterElement!);
+      final parameterConfiguration = await builder
+          .getElementConfiguration(argument.staticParameterElement!);
       if (parameterConfiguration == null) return;
 
-      final argumentConfiguration = await builder.getExpressionConfiguration(argument);
+      final argumentConfiguration =
+          await builder.getExpressionConfiguration(argument);
       if (argumentConfiguration == null) return;
 
       computedAssignments[argument] = (
@@ -51,7 +57,8 @@ class UnsafeAssignment extends DartLintRule {
     }));
 
     await Future.wait(assignments.map((assignment) async {
-      final targetConfiguration = await builder.getExpressionConfiguration(assignment.leftHandSide);
+      final targetConfiguration =
+          await builder.getExpressionConfiguration(assignment.leftHandSide);
       if (targetConfiguration == null) return;
 
       final expressionConfiguration =
@@ -81,12 +88,16 @@ class UnsafeAssignment extends DartLintRule {
   }
 
   @override
-  void run(CustomLintResolver resolver, ErrorReporter reporter, CustomLintContext context) {
-    for (final MapEntry(key: argument, value: (:parameterConfiguration, :argumentConfiguration))
-        in computedAssignments.entries) {
+  void run(CustomLintResolver resolver, ErrorReporter reporter,
+      CustomLintContext context) {
+    for (final MapEntry(
+          key: argument,
+          value: (:parameterConfiguration, :argumentConfiguration)
+        ) in computedAssignments.entries) {
       // Skip one level because we don't care about what evaluating the expression throws, only what
       // its value throws - since only the value is passed to the parameter.
-      if (!argumentConfiguration.isCompatibleWith(parameterConfiguration, atLevel: 1)) {
+      if (!argumentConfiguration.isCompatibleWith(parameterConfiguration,
+          atLevel: 1)) {
         reporter.reportErrorForNode(
           _code,
           argument,

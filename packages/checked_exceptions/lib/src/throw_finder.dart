@@ -28,9 +28,12 @@ class ThrowFinder extends UnifyingAstVisitor<Future<Map<AstNode, Throws>>> {
   }
 
   @override
-  Future<Map<AstNode, Throws>> visitFunctionExpression(FunctionExpression node) async => {};
+  Future<Map<AstNode, Throws>> visitFunctionExpression(
+          FunctionExpression node) async =>
+      {};
 
   @override
-  Future<Map<AstNode, Throws>> visitVariableDeclaration(VariableDeclaration node) async =>
+  Future<Map<AstNode, Throws>> visitVariableDeclaration(
+          VariableDeclaration node) async =>
       node.isLate ? {} : await super.visitVariableDeclaration(node)!;
 }

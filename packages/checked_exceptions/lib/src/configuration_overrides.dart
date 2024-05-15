@@ -26,7 +26,8 @@ class ConfigurationOverrides {
 
   ConfigurationOverrides(this.overrides);
 
-  static Future<ConfigurationOverrides?> loadFile(AnalysisSession session, Uri uri) async {
+  static Future<ConfigurationOverrides?> loadFile(
+      AnalysisSession session, Uri uri) async {
     final path = session.uriConverter.uriToPath(uri);
     if (path == null) return null;
 
@@ -56,7 +57,8 @@ class ConfigurationOverrides {
   }
 
   /// Compute the [ConfigurationOverrides] for the given [session].
-  static Future<ConfigurationOverrides> forSession(AnalysisSession session) async {
+  static Future<ConfigurationOverrides> forSession(
+      AnalysisSession session) async {
     final overrides = <ElementLocation, Configuration>{};
 
     Future<void> loadConfigurationFile(Uri uri) async {
@@ -66,7 +68,9 @@ class ConfigurationOverrides {
 
     // First load the default configuration
     await loadConfigurationFile(
-      Uri(scheme: 'package', path: 'checked_exceptions/checked_exceptions.yaml'),
+      Uri(
+          scheme: 'package',
+          path: 'checked_exceptions/checked_exceptions.yaml'),
     );
 
     // Then load all the dependencies' configurations
@@ -81,8 +85,9 @@ class ConfigurationOverrides {
           final packageName = package['name'];
           if (packageName == null) continue;
           tasks.add(
-            loadConfigurationFile(
-                Uri(scheme: 'package', path: '$packageName/checked_exceptions.yaml')),
+            loadConfigurationFile(Uri(
+                scheme: 'package',
+                path: '$packageName/checked_exceptions.yaml')),
           );
         }
       }
@@ -128,7 +133,9 @@ class ConfigurationOverride {
     final elementName = raw['element'];
     final rawImports = raw['imports'];
 
-    if (libraryUri is! String || elementName is! String || rawImports is! List?) {
+    if (libraryUri is! String ||
+        elementName is! String ||
+        rawImports is! List?) {
       return null;
     }
 
@@ -142,18 +149,20 @@ class ConfigurationOverride {
     for (final part in elementParts) {
       if (element == null) break;
       element = switch (element) {
-        ClassElement() when part == 'new' =>
-          element.constructors.singleWhereOrNull((element) => element.isDefaultConstructor),
+        ClassElement() when part == 'new' => element.constructors
+            .singleWhereOrNull((element) => element.isDefaultConstructor),
         LibraryElement(:final scope) => scope.lookup(part).getter,
         TypeAliasElement(aliasedType: FunctionType(:final parameters)) ||
         VariableElement(type: FunctionType(:final parameters)) ||
         FunctionTypedElement(:final parameters) =>
           parameters.indexed
               .singleWhereOrNull((element) =>
-                  element.$2.name == part || (element.$2.isPositional && '\$${element.$1}' == part))
+                  element.$2.name == part ||
+                  (element.$2.isPositional && '\$${element.$1}' == part))
               ?.$2,
         // Catches InstanceElement
-        _ => element.children.singleWhereOrNull((element) => element.name == part),
+        _ =>
+          element.children.singleWhereOrNull((element) => element.name == part),
       };
     }
 
@@ -190,7 +199,8 @@ class ConfigurationOverride {
         for (final declaredThrownType in declaredThrows.whereType<String>()) {
           final source = StringSource(declaredThrownType, null);
           final scanner = Scanner.fasta(source, errorListener)
-            ..configureFeatures(featureSetForOverriding: featureSet, featureSet: featureSet);
+            ..configureFeatures(
+                featureSetForOverriding: featureSet, featureSet: featureSet);
           final token = scanner.tokenize();
           final parser = Parser(
             source,
@@ -199,7 +209,8 @@ class ConfigurationOverride {
             featureSet: featureSet,
           )..currentToken = token;
 
-          final typeAnnotation = parser.parseTypeAnnotation(false)..accept(resolutionVisitor);
+          final typeAnnotation = parser.parseTypeAnnotation(false)
+            ..accept(resolutionVisitor);
           final thrownType = typeAnnotation.type;
           if (thrownType == null) continue;
           thrownTypes.add(thrownType);
@@ -210,7 +221,8 @@ class ConfigurationOverride {
       for (final promotionType in PromotionType.values) {
         if (raw[promotionType.key] case Map declaredValueConfiguration) {
           isConfigurationMap = true;
-          final parsedConfiguration = parseConfiguration(declaredValueConfiguration);
+          final parsedConfiguration =
+              parseConfiguration(declaredValueConfiguration);
           if (parsedConfiguration == null) continue;
           valueConfigurations[promotionType] = parsedConfiguration;
         }

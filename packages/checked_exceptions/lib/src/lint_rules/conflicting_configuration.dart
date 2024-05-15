@@ -32,7 +32,8 @@ class ConflictingConfiguration extends DartLintRule {
   }
 
   @override
-  void run(CustomLintResolver resolver, ErrorReporter reporter, CustomLintContext context) {
+  void run(CustomLintResolver resolver, ErrorReporter reporter,
+      CustomLintContext context) {
     final safeTypeChecker = TypeChecker.fromName(
       'Safe',
       packageName: 'checked_exceptions_annotations',
@@ -73,13 +74,16 @@ class ConflictingConfiguration extends DartLintRule {
           .whereType<(Annotation, DartType)>();
 
       for (final (index, (_, firstAnnotationType)) in annotations.indexed) {
-        final firstAnnotationKnownType =
-            predicates.firstWhereOrNull((element) => element.$2(firstAnnotationType))?.$1;
+        final firstAnnotationKnownType = predicates
+            .firstWhereOrNull((element) => element.$2(firstAnnotationType))
+            ?.$1;
         if (firstAnnotationKnownType == null) continue;
 
-        for (final (secondAnnotation, secondAnnotationType) in annotations.skip(index + 1)) {
-          final secondAnnotationKnownType =
-              predicates.firstWhereOrNull((element) => element.$2(secondAnnotationType))?.$1;
+        for (final (secondAnnotation, secondAnnotationType)
+            in annotations.skip(index + 1)) {
+          final secondAnnotationKnownType = predicates
+              .firstWhereOrNull((element) => element.$2(secondAnnotationType))
+              ?.$1;
           if (secondAnnotationKnownType == null) continue;
 
           if (firstAnnotationKnownType != secondAnnotationKnownType) {

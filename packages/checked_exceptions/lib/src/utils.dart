@@ -11,7 +11,8 @@ class NodeFinder<T extends AstNode> extends UnifyingAstVisitor<List<T>> {
   @override
   List<T> visitNode(AstNode node) => [
         if (node is T && (predicate == null || predicate!(node))) node,
-        for (final childNode in node.childEntities.whereType<AstNode>()) ...childNode.accept(this)!
+        for (final childNode in node.childEntities.whereType<AstNode>())
+          ...childNode.accept(this)!
       ];
 }
 

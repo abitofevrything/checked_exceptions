@@ -33,7 +33,8 @@ class BootstrappingConfigurationBuilder extends ConfigurationBuilder {
     Iterable<Element> allElements, {
     required ConfigurationOverrides overrides,
   }) async {
-    final builder = await ConfigurationBuilder.forSession(session, overrides: overrides);
+    final builder =
+        await ConfigurationBuilder.forSession(session, overrides: overrides);
 
     return BootstrappingConfigurationBuilder(
       session,
@@ -59,16 +60,22 @@ class BootstrappingConfigurationBuilder extends ConfigurationBuilder {
     InterfaceElement interface,
     Element element,
   ) async {
-    if ((element is ClassMemberElement && element.isStatic) || element is ConstructorElement) {
+    if ((element is ClassMemberElement && element.isStatic) ||
+        element is ConstructorElement) {
       return null;
     }
 
-    Set<InterfaceElement> getDirectSupertypeElements(InterfaceElement interfaceElement) => {
-          if (interfaceElement.supertype case final supertype?) supertype.element,
-          for (final interface in interfaceElement.interfaces) interface.element,
+    Set<InterfaceElement> getDirectSupertypeElements(
+            InterfaceElement interfaceElement) =>
+        {
+          if (interfaceElement.supertype case final supertype?)
+            supertype.element,
+          for (final interface in interfaceElement.interfaces)
+            interface.element,
           for (final mixin in interfaceElement.mixins) mixin.element,
           if (interfaceElement is MixinElement)
-            for (final constraint in interfaceElement.superclassConstraints) constraint.element,
+            for (final constraint in interfaceElement.superclassConstraints)
+              constraint.element,
         };
 
     Set<InterfaceElement> getDirectSubtypeElements(InterfaceElement element) =>
@@ -91,10 +98,12 @@ class BootstrappingConfigurationBuilder extends ConfigurationBuilder {
       if (!element.isPrivate || element.library == subclassElement.library) {
         for (final subclassElement in subclassElement.children) {
           if (element.name == subclassElement.name &&
-              (subclassElement is ClassMemberElement && !subclassElement.isStatic) &&
+              (subclassElement is ClassMemberElement &&
+                  !subclassElement.isStatic) &&
               subclassElement is! ConstructorElement) {
             foundMatching = true;
-            implementerConfigurationFutures.add(getElementConfiguration(subclassElement));
+            implementerConfigurationFutures
+                .add(getElementConfiguration(subclassElement));
             break;
           }
         }
@@ -102,17 +111,20 @@ class BootstrappingConfigurationBuilder extends ConfigurationBuilder {
 
       if (!foundMatching) {
         final nextToVisit = getDirectSubtypeElements(subclassElement);
-        elementsToVisit.addAll(nextToVisit.where((element) => !visitedElements.contains(element)));
+        elementsToVisit.addAll(
+            nextToVisit.where((element) => !visitedElements.contains(element)));
       }
     }
 
     if (element is ExecutableElement) {
-      implementerConfigurationFutures.add(getExecutableElementThrowsConfiguration(
+      implementerConfigurationFutures
+          .add(getExecutableElementThrowsConfiguration(
         element,
         await computeTypeConfiguration(element.returnType),
       ));
     } else if (element is VariableElement) {
-      implementerConfigurationFutures.add(getVariableElementInitializerConfiguration(element));
+      implementerConfigurationFutures
+          .add(getVariableElementInitializerConfiguration(element));
     }
 
     final implementerConfigurations =
@@ -126,7 +138,8 @@ Future<void> main() async {
   print('Ensuring dependencies are up to date...');
 
   final dummyProjectLocation = Platform.script.resolve('./dummy_project/');
-  final dummyProjectPubspecLocation = dummyProjectLocation.resolve('pubspec.yaml');
+  final dummyProjectPubspecLocation =
+      dummyProjectLocation.resolve('pubspec.yaml');
 
   final process = await Process.start(
     Platform.executable,
@@ -147,8 +160,8 @@ Future<void> main() async {
   final contextLocator = ContextLocator();
   final contextBuilder = ContextBuilder();
 
-  final roots =
-      contextLocator.locateRoots(includedPaths: [dummyProjectPubspecLocation.toFilePath()]);
+  final roots = contextLocator
+      .locateRoots(includedPaths: [dummyProjectPubspecLocation.toFilePath()]);
   final context = contextBuilder.createContext(contextRoot: roots.single);
 
   print('Discovering libraries...');
@@ -164,17 +177,20 @@ Future<void> main() async {
   print('Found ${targetLibraries.length} SDK libraries:');
   print(targetLibraries);
 
-  final dummyProjectPubspecFile =
-      context.currentSession.resourceProvider.getFile(dummyProjectPubspecLocation.toFilePath());
-  final dummyPubspecContents = loadYaml(dummyProjectPubspecFile.readAsStringSync());
-  final dummyProjectDependencies = dummyPubspecContents['dependencies'] as YamlMap;
+  final dummyProjectPubspecFile = context.currentSession.resourceProvider
+      .getFile(dummyProjectPubspecLocation.toFilePath());
+  final dummyPubspecContents =
+      loadYaml(dummyProjectPubspecFile.readAsStringSync());
+  final dummyProjectDependencies =
+      dummyPubspecContents['dependencies'] as YamlMap;
 
   Future<void> discoverLibrariesInPackage(String packageName) async {
     final dependencyRoot = context.currentSession.uriConverter.uriToPath(
       Uri(scheme: 'package', path: '$packageName/'),
     );
     if (dependencyRoot == null) return;
-    final folder = context.currentSession.resourceProvider.getFolder(dependencyRoot);
+    final folder =
+        context.currentSession.resourceProvider.getFolder(dependencyRoot);
     if (!folder.exists) return;
     final directory = io.Directory(folder.path);
 
@@ -194,7 +210,9 @@ Future<void> main() async {
     }
   }
 
-  await Future.wait(dummyProjectDependencies.keys.cast<String>().map(discoverLibrariesInPackage));
+  await Future.wait(dummyProjectDependencies.keys
+      .cast<String>()
+      .map(discoverLibrariesInPackage));
 
   print('Found ${targetLibraries.length} libraries total');
   print('Loading elements...');
@@ -231,7 +249,8 @@ Future<void> main() async {
       return;
     }
 
-    final isImplementationLibrary = RegExp(r'^package:[^/]+/src/').hasMatch(uri);
+    final isImplementationLibrary =
+        RegExp(r'^package:[^/]+/src/').hasMatch(uri);
 
     for (final child in result.element.exportNamespace.definedNames.values) {
       loadElement(child, inPublicContext: !isImplementationLibrary);
@@ -246,7 +265,8 @@ Future<void> main() async {
 
   await Future.wait(targetLibraries.map(loadLibrary));
 
-  print('Loaded ${publicElements.length} public elements, ${allElements.length} elements in total');
+  print(
+      'Loaded ${publicElements.length} public elements, ${allElements.length} elements in total');
   print('Loading bootstrap overrides...');
 
   final overrides = await ConfigurationOverrides.loadFile(
@@ -269,7 +289,8 @@ Future<void> main() async {
   );
 
   final output =
-      io.File.fromUri(Platform.script.resolve('../lib/checked_exceptions.yaml')).openWrite();
+      io.File.fromUri(Platform.script.resolve('../lib/checked_exceptions.yaml'))
+          .openWrite();
   output.writeln('''
 # Format is
 # checked_exceptions:
@@ -291,7 +312,8 @@ Future<void> main() async {
 
   await output.flush();
 
-  await Future.wait(publicElements.map((e) => handleElement(builder, output, e)));
+  await Future.wait(
+      publicElements.map((e) => handleElement(builder, output, e)));
 
   await output.close();
 
@@ -320,7 +342,9 @@ Future<void> handleElement(
             TypeAliasElement() ||
             FunctionElement() ||
             EnumElement() ||
-            PropertyAccessorElement(enclosingElement: CompilationUnitElement()) ||
+            PropertyAccessorElement(
+              enclosingElement: CompilationUnitElement()
+            ) ||
             ExtensionTypeElement() ||
             MixinElement():
         return element.name;
@@ -337,8 +361,8 @@ Future<void> handleElement(
 
         return '$enclosingLocation.${element.name}';
       case ParameterElement(
-            enclosingElement:
-                Element enclosingElement && (ExecutableElement() || ParameterElement())
+            enclosingElement: Element enclosingElement &&
+                (ExecutableElement() || ParameterElement())
           )
           when element.name.isNotEmpty:
         final enclosingLocation = getLocation(enclosingElement);
@@ -366,14 +390,16 @@ Future<void> handleElement(
 
   String serializeConfiguration(Configuration configuration) {
     final result = StringBuffer();
-    if (configuration.throws.thrownTypes.isNotEmpty || configuration.valueConfigurations.isEmpty) {
+    if (configuration.throws.thrownTypes.isNotEmpty ||
+        configuration.valueConfigurations.isEmpty) {
       result.writeln('throws: [${configuration.throws.thrownTypes.join(',')}]');
     }
     if (configuration.throws.canThrowUndeclaredErrors) {
       result.writeln('allows_undeclared: true');
     }
 
-    for (final MapEntry(:key, :value) in configuration.valueConfigurations.entries) {
+    for (final MapEntry(:key, :value)
+        in configuration.valueConfigurations.entries) {
       final serializedConfiguration = serializeConfiguration(value);
       result.writeln('${key.key}:');
       result.writeln('  ${serializedConfiguration.replaceAll('\n', '\n  ')}');

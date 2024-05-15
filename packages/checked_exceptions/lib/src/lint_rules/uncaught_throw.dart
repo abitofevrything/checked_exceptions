@@ -19,7 +19,8 @@ class UncaughtThrow extends DartLintRule {
 
   UncaughtThrow() : super(code: _code);
 
-  final computedConfigurations = <AstNode, (Throws, Map<AstNode, List<DartType>>)>{};
+  final computedConfigurations =
+      <AstNode, (Throws, Map<AstNode, List<DartType>>)>{};
 
   @override
   Future<void> startUp(
@@ -33,10 +34,10 @@ class UncaughtThrow extends DartLintRule {
 
     computedConfigurations.clear();
 
-    final functions =
-        unit.unit.accept(NodeFinder<Declaration>((d) => d.declaredElement is ExecutableElement))!;
-    final functionExpressions =
-        unit.unit.accept(NodeFinder<FunctionExpression>((f) => f.staticParameterElement != null))!;
+    final functions = unit.unit.accept(NodeFinder<Declaration>(
+        (d) => d.declaredElement is ExecutableElement))!;
+    final functionExpressions = unit.unit.accept(NodeFinder<FunctionExpression>(
+        (f) => f.staticParameterElement != null))!;
 
     await Future.wait(functions.map((function) async {
       final body = switch (function) {
@@ -51,9 +52,11 @@ class UncaughtThrow extends DartLintRule {
 
       final element = function.declaredElement as ExecutableElement;
 
-      final configuration = await builder.computeEquivalentAnnotationConfiguration(
+      final configuration =
+          await builder.computeEquivalentAnnotationConfiguration(
         element,
-        isGetterOrSetter: element.kind == ElementKind.GETTER || element.kind == ElementKind.SETTER,
+        isGetterOrSetter: element.kind == ElementKind.GETTER ||
+            element.kind == ElementKind.SETTER,
         isAsynchronous: element.isAsynchronous,
       );
       if (configuration == null) return null;
@@ -64,37 +67,48 @@ class UncaughtThrow extends DartLintRule {
         configuration,
         {
           for (final MapEntry(:key, :value) in throws.entries)
-            key: [...value.thrownTypes, if (value.canThrowUndeclaredErrors) builder.objectType]
+            key: [
+              ...value.thrownTypes,
+              if (value.canThrowUndeclaredErrors) builder.objectType
+            ]
         },
       );
     }));
 
     await Future.wait(functionExpressions.map((functionExpression) async {
-      final configuration = await builder.computeEquivalentAnnotationConfiguration(
+      final configuration =
+          await builder.computeEquivalentAnnotationConfiguration(
         functionExpression.staticParameterElement!,
         isGetterOrSetter: false,
         isAsynchronous: functionExpression.body.isAsynchronous,
       );
       if (configuration == null) return;
 
-      final throws = await functionExpression.body.accept(ThrowFinder(builder))!;
+      final throws =
+          await functionExpression.body.accept(ThrowFinder(builder))!;
 
       computedConfigurations[functionExpression.body] = (
         configuration,
         {
           for (final MapEntry(:key, :value) in throws.entries)
-            key: [...value.thrownTypes, if (value.canThrowUndeclaredErrors) builder.objectType]
+            key: [
+              ...value.thrownTypes,
+              if (value.canThrowUndeclaredErrors) builder.objectType
+            ]
         },
       );
     }));
   }
 
   @override
-  void run(CustomLintResolver resolver, ErrorReporter reporter, CustomLintContext context) {
+  void run(CustomLintResolver resolver, ErrorReporter reporter,
+      CustomLintContext context) {
     final exceptionTypeChecker = TypeChecker.fromUrl('dart:core#Exception');
 
-    for (final (configuration, throwingNodes) in computedConfigurations.values) {
-      for (final MapEntry(key: location, value: thrownTypes) in throwingNodes.entries) {
+    for (final (configuration, throwingNodes)
+        in computedConfigurations.values) {
+      for (final MapEntry(key: location, value: thrownTypes)
+          in throwingNodes.entries) {
         nextType:
         for (final thrownType in thrownTypes) {
           if (!exceptionTypeChecker.isAssignableFromType(thrownType) &&
@@ -103,7 +117,8 @@ class UncaughtThrow extends DartLintRule {
           }
 
           for (final allowedType in configuration.thrownTypes) {
-            if (TypeChecker.fromStatic(allowedType).isAssignableFromType(thrownType)) {
+            if (TypeChecker.fromStatic(allowedType)
+                .isAssignableFromType(thrownType)) {
               continue nextType;
             }
           }

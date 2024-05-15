@@ -22,8 +22,8 @@ import 'package:custom_lint_builder/custom_lint_builder.dart';
 class ConfigurationBuilder {
   final _recursionProtectionKey = Object();
 
-  final Expando<({Zone zone, Future<Configuration?> result})> _elementConfigurationCache =
-      Expando();
+  final Expando<({Zone zone, Future<Configuration?> result})>
+      _elementConfigurationCache = Expando();
 
   final safeTypeChecker = TypeChecker.fromName(
     'Safe',
@@ -64,15 +64,16 @@ class ConfigurationBuilder {
     AnalysisSession session, {
     ConfigurationOverrides? overrides,
   }) async {
-    final coreLibrary =
-        await session.getResolvedLibrary(session.uriConverter.uriToPath(Uri.parse('dart:core'))!)
-            as ResolvedLibraryResult;
+    final coreLibrary = await session.getResolvedLibrary(
+            session.uriConverter.uriToPath(Uri.parse('dart:core'))!)
+        as ResolvedLibraryResult;
 
     return ConfigurationBuilder(
       session,
       objectType: coreLibrary.typeProvider.objectType,
-      typeErrorType:
-          (coreLibrary.element.exportNamespace.get('TypeError') as InterfaceElement).thisType,
+      typeErrorType: (coreLibrary.element.exportNamespace.get('TypeError')
+              as InterfaceElement)
+          .thisType,
       overrides: overrides ?? await ConfigurationOverrides.forSession(session),
     );
   }
@@ -81,7 +82,8 @@ class ConfigurationBuilder {
   ///
   /// Returns `null` if no configuration could be generated.
   Future<Configuration?> getExpressionConfiguration(Expression node) async {
-    return await node.accept<Future<Configuration?>>(ExpressionConfigurationVisitor(this))!;
+    return await node
+        .accept<Future<Configuration?>>(ExpressionConfigurationVisitor(this))!;
   }
 
   /// Get the [Configuration] of an [Element]. This is the configuration of any [Identifier] whose
@@ -125,24 +127,31 @@ class ConfigurationBuilder {
 
     switch (element) {
       case ExecutableElement():
-        final returnTypeConfiguration = await computeTypeConfiguration(element.returnType);
+        final returnTypeConfiguration =
+            await computeTypeConfiguration(element.returnType);
 
         final declaredConfiguration =
-            getExecutableElementAnnotationConfiguration(element, returnTypeConfiguration);
+            getExecutableElementAnnotationConfiguration(
+                element, returnTypeConfiguration);
         if (declaredConfiguration != null) return declaredConfiguration;
 
         if (element.enclosingElement case InterfaceElement interface) {
-          final inheritedConfiguration = await getInheritedConfiguration(interface, element);
+          final inheritedConfiguration =
+              await getInheritedConfiguration(interface, element);
           if (inheritedConfiguration != null) return inheritedConfiguration;
         }
 
-        return await getExecutableElementThrowsConfiguration(element, returnTypeConfiguration);
+        return await getExecutableElementThrowsConfiguration(
+            element, returnTypeConfiguration);
       case VariableElement():
-        final typeConfiguration =
-            element.hasImplicitType ? null : await computeTypeConfiguration(element.type);
-        final initializerConfiguration = await getVariableElementInitializerConfiguration(element);
+        final typeConfiguration = element.hasImplicitType
+            ? null
+            : await computeTypeConfiguration(element.type);
+        final initializerConfiguration =
+            await getVariableElementInitializerConfiguration(element);
 
-        final declaredConfiguration = await getVariableElementAnnotationConfiguration(
+        final declaredConfiguration =
+            await getVariableElementAnnotationConfiguration(
           element,
           element.isLate ? initializerConfiguration?.throws : null,
           typeConfiguration ?? initializerConfiguration?.valueConfigurations,
@@ -150,7 +159,8 @@ class ConfigurationBuilder {
         if (declaredConfiguration != null) return declaredConfiguration;
 
         if (element.enclosingElement case InterfaceElement interface) {
-          final inheritedConfiguration = await getInheritedConfiguration(interface, element);
+          final inheritedConfiguration =
+              await getInheritedConfiguration(interface, element);
           if (inheritedConfiguration != null) return inheritedConfiguration;
         }
 
@@ -199,7 +209,8 @@ class ConfigurationBuilder {
       );
     }
 
-    if (element.kind != ElementKind.SETTER && element.kind != ElementKind.GETTER) {
+    if (element.kind != ElementKind.SETTER &&
+        element.kind != ElementKind.GETTER) {
       configuration = Configuration(
         (thrownTypes: [], canThrowUndeclaredErrors: false),
         {PromotionType.invoke: configuration},
@@ -252,12 +263,17 @@ class ConfigurationBuilder {
 
     final inheritedConfigurationFutures = <Future<Configuration?>>[];
 
-    Set<InterfaceElement> getDirectSupertypeElements(InterfaceElement interfaceElement) => {
-          if (interfaceElement.supertype case final supertype?) supertype.element,
-          for (final interface in interfaceElement.interfaces) interface.element,
+    Set<InterfaceElement> getDirectSupertypeElements(
+            InterfaceElement interfaceElement) =>
+        {
+          if (interfaceElement.supertype case final supertype?)
+            supertype.element,
+          for (final interface in interfaceElement.interfaces)
+            interface.element,
           for (final mixin in interfaceElement.mixins) mixin.element,
           if (interfaceElement is MixinElement)
-            for (final constraint in interfaceElement.superclassConstraints) constraint.element,
+            for (final constraint in interfaceElement.superclassConstraints)
+              constraint.element,
         };
 
     final elementsToVisit = getDirectSupertypeElements(interfaceElement);
@@ -278,17 +294,20 @@ class ConfigurationBuilder {
 
       for (final superclassElement in superclassElement.children) {
         if (element.name == superclassElement.name &&
-            (superclassElement is ClassMemberElement && !superclassElement.isStatic) &&
+            (superclassElement is ClassMemberElement &&
+                !superclassElement.isStatic) &&
             superclassElement is! ConstructorElement) {
           foundMatching = true;
-          inheritedConfigurationFutures.add(getElementConfiguration(superclassElement));
+          inheritedConfigurationFutures
+              .add(getElementConfiguration(superclassElement));
           break;
         }
       }
 
       if (!foundMatching) {
         final nextToVisit = getDirectSupertypeElements(superclassElement);
-        elementsToVisit.addAll(nextToVisit.where((element) => !visitedElements.contains(element)));
+        elementsToVisit.addAll(
+            nextToVisit.where((element) => !visitedElements.contains(element)));
       }
     }
 
@@ -304,9 +323,11 @@ class ConfigurationBuilder {
     ExecutableElement element,
     ValueThrows? returnTypeConfiguration,
   ) async {
-    final parsedLibrary = await session.getResolvedLibraryByElement(element.library);
+    final parsedLibrary =
+        await session.getResolvedLibraryByElement(element.library);
     if (parsedLibrary is! ResolvedLibraryResult) {
-      print('[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
+      print(
+          '[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
       return null;
     }
 
@@ -345,7 +366,8 @@ class ConfigurationBuilder {
 
   /// Return the configuration of [element]'s initializer, or `null` if [element] has no
   /// initializer.
-  Future<Configuration?> getVariableElementInitializerConfiguration(VariableElement element) async {
+  Future<Configuration?> getVariableElementInitializerConfiguration(
+      VariableElement element) async {
     final library = element.library;
     if (library == null) {
       print('[BUILDER] Got element with null library');
@@ -354,7 +376,8 @@ class ConfigurationBuilder {
 
     final parsedLibrary = await session.getResolvedLibraryByElement(library);
     if (parsedLibrary is! ResolvedLibraryResult) {
-      print('[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
+      print(
+          '[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
       return null;
     }
 
@@ -372,7 +395,8 @@ class ConfigurationBuilder {
       _ => 0, // Not an Expression
     };
     if (initializer is! Expression?) {
-      print('[BUILDER] Unable to get initializer of ${declarationNode.runtimeType}');
+      print(
+          '[BUILDER] Unable to get initializer of ${declarationNode.runtimeType}');
       return null;
     }
 
@@ -406,14 +430,16 @@ class ConfigurationBuilder {
       valueConfigurations = {
         PromotionType.await_: Configuration(
           annotationConfiguration,
-          existingConfiguration?[PromotionType.await_]?.valueConfigurations ?? {},
+          existingConfiguration?[PromotionType.await_]?.valueConfigurations ??
+              {},
         ),
       };
     } else if (isCallable && !isFuture) {
       valueConfigurations = {
         PromotionType.invoke: Configuration(
           annotationConfiguration,
-          existingConfiguration?[PromotionType.invoke]?.valueConfigurations ?? {},
+          existingConfiguration?[PromotionType.invoke]?.valueConfigurations ??
+              {},
         ),
       };
     } else {
@@ -442,20 +468,25 @@ class ConfigurationBuilder {
 
       if (safeTypeChecker.isAssignableFromType(type)) {
         hasFoundConfiguration = true;
-        if (neverThrowsTypeChecker.isAssignableFromType(type)) canThrowUndeclaredErrors = false;
+        if (neverThrowsTypeChecker.isAssignableFromType(type))
+          canThrowUndeclaredErrors = false;
       } else if (throwsErrorTypeChecker.isAssignableFromType(type)) {
         hasFoundConfiguration = true;
 
-        final throwsErrorInstanciation =
-            [type, ...type.allSupertypes].firstWhere(throwsErrorTypeChecker.isExactlyType);
+        final throwsErrorInstanciation = [type, ...type.allSupertypes]
+            .firstWhere(throwsErrorTypeChecker.isExactlyType);
         thrownTypes.add(throwsErrorInstanciation.typeArguments.single);
 
-        if (throwsTypeChecker.isAssignableFromType(type)) canThrowUndeclaredErrors = false;
+        if (throwsTypeChecker.isAssignableFromType(type))
+          canThrowUndeclaredErrors = false;
       }
     }
 
     if (!hasFoundConfiguration) return null;
-    return (thrownTypes: thrownTypes, canThrowUndeclaredErrors: canThrowUndeclaredErrors);
+    return (
+      thrownTypes: thrownTypes,
+      canThrowUndeclaredErrors: canThrowUndeclaredErrors
+    );
   }
 
   /// Compute the configuration information provided by a type to any expression of that type.
@@ -465,10 +496,12 @@ class ConfigurationBuilder {
     switch (type) {
       case FunctionType():
         Throws? throws;
-        final returnTypeConfiguration = await computeTypeConfiguration(type.returnType);
+        final returnTypeConfiguration =
+            await computeTypeConfiguration(type.returnType);
 
         if (type.alias?.element case final aliasElement?) {
-          final declaredConfiguration = getElementAnnotationConfiguration(aliasElement);
+          final declaredConfiguration =
+              getElementAnnotationConfiguration(aliasElement);
           if (declaredConfiguration != null) {
             throws = declaredConfiguration;
           } else {
@@ -485,29 +518,37 @@ class ConfigurationBuilder {
           ),
         };
       case InterfaceType():
-        final futureInstanciation =
-            [type, ...type.allSupertypes].firstWhereOrNull(futureTypeChecker.isExactlyType);
+        final futureInstanciation = [type, ...type.allSupertypes]
+            .firstWhereOrNull(futureTypeChecker.isExactlyType);
         final callMethod = type.element.children.singleWhereOrNull((element) =>
-            element is MethodElement && element.name == FunctionElement.CALL_METHOD_NAME);
+            element is MethodElement &&
+            element.name == FunctionElement.CALL_METHOD_NAME);
 
         if (futureInstanciation == null && callMethod == null) return null;
 
         final declaredConfiguration = switch (type.alias?.element) {
           // Declared configuration would be ambiguous in this case.
           _ when callMethod != null && futureInstanciation != null => null,
-          final aliasElement? => getElementAnnotationConfiguration(aliasElement),
+          final aliasElement? =>
+            getElementAnnotationConfiguration(aliasElement),
           _ => null,
         };
         return {
           if (futureInstanciation != null)
             PromotionType.await_: Configuration(
-              declaredConfiguration ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
-              await computeTypeConfiguration(futureInstanciation.typeArguments.single) ?? {},
+              declaredConfiguration ??
+                  (thrownTypes: [], canThrowUndeclaredErrors: false),
+              await computeTypeConfiguration(
+                      futureInstanciation.typeArguments.single) ??
+                  {},
             ),
           if (callMethod != null)
             PromotionType.invoke: Configuration(
-              declaredConfiguration ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
-              (await getElementConfiguration(callMethod))?.valueConfigurations ?? {},
+              declaredConfiguration ??
+                  (thrownTypes: [], canThrowUndeclaredErrors: false),
+              (await getElementConfiguration(callMethod))
+                      ?.valueConfigurations ??
+                  {},
             ),
         };
       case VoidType():

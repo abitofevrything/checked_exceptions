@@ -16,7 +16,8 @@ class UnsafeOverride extends DartLintRule {
 
   UnsafeOverride() : super(code: _code);
 
-  final computedConfigurations = <Element, ({Configuration current, Configuration overridden})>{};
+  final computedConfigurations =
+      <Element, ({Configuration current, Configuration overridden})>{};
 
   @override
   Future<void> startUp(
@@ -31,7 +32,9 @@ class UnsafeOverride extends DartLintRule {
     computedConfigurations.clear();
 
     final classMembers = unit.unit.accept(NodeFinder<Declaration>(
-      (d) => (d is MethodDeclaration && !d.isStatic) || (d is FieldDeclaration && !d.isStatic),
+      (d) =>
+          (d is MethodDeclaration && !d.isStatic) ||
+          (d is FieldDeclaration && !d.isStatic),
     ))!;
 
     await Future.wait(classMembers.map((declaration) async {
@@ -58,7 +61,8 @@ class UnsafeOverride extends DartLintRule {
   }
 
   @override
-  void run(CustomLintResolver resolver, ErrorReporter reporter, CustomLintContext context) {
+  void run(CustomLintResolver resolver, ErrorReporter reporter,
+      CustomLintContext context) {
     for (final MapEntry(key: element, value: (:current, :overridden))
         in computedConfigurations.entries) {
       if (!current.isCompatibleWith(overridden)) {
