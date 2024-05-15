@@ -1,5 +1,7 @@
 import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
 
+// ignore_for_file: unused_local_variable
+
 @neverThrows
 @safe
 void foo() async {
