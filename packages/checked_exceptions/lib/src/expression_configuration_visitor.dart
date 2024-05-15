@@ -155,6 +155,14 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
   }
 
   @override
+  Future<Configuration?> visitIndexExpression(IndexExpression node) async {
+    final staticElement = node.staticElement;
+    if (staticElement == null) return null;
+    return (await builder.getElementConfiguration(staticElement))
+        ?.valueConfigurations[PromotionType.invoke];
+  }
+
+  @override
   Future<Configuration?> visitInstanceCreationExpression(InstanceCreationExpression node) async {
     final constructorElement = node.constructorName.staticElement;
     if (constructorElement == null) return null;
@@ -164,8 +172,8 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
 
   @override
   Future<Configuration?> visitInvocationExpression(InvocationExpression node) async {
-    return (await builder.getExpressionConfiguration(node.function))
-        ?.valueConfigurations[PromotionType.invoke];
+    final functionConfig = await builder.getExpressionConfiguration(node.function);
+    return functionConfig?.valueConfigurations[PromotionType.invoke];
   }
 
   @override
@@ -223,6 +231,13 @@ class ExpressionConfigurationVisitor extends GeneralizingAstVisitor<Future<Confi
     if (staticElement == null) return null;
     return (await builder.getElementConfiguration(staticElement))
         ?.valueConfigurations[PromotionType.invoke];
+  }
+
+  @override
+  Future<Configuration?> visitPropertyAccess(PropertyAccess node) async {
+    final staticElement = node.propertyName.staticElement;
+    if (staticElement == null) return null;
+    return await builder.getElementConfiguration(staticElement);
   }
 
   @override
