@@ -8,7 +8,8 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  analyzer: ^6.4.1
+  # Pin analyzer version since we use internal APIs
+  analyzer: 6.4.1
   analyzer_plugin: ^0.11.3
   collection: ^1.18.0
   custom_lint_builder: ^0.6.2
