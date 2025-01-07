@@ -1,563 +1,958 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/analysis/session.dart';
 import 'package:analyzer/dart/ast/ast.dart' hide Configuration;
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/element/type_system.dart';
 import 'package:checked_exceptions/src/configuration.dart';
-import 'package:checked_exceptions/src/configuration_overrides.dart';
-import 'package:checked_exceptions/src/expression_configuration_visitor.dart';
-import 'package:checked_exceptions/src/throw_finder.dart';
 import 'package:collection/collection.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
 
-/// Provides the means to compute the [Configuration] for an expression.
-///
-/// The important methods on this class are:
-/// - [getExpressionConfiguration], for getting the [Configuration] of an [Expression].
-/// - [getElementConfiguration], for getting the [Configuration] of a reference to an [Element].
-/// - [computeEquivalentAnnotationConfiguration], for getting the restrictions to apply to a
-///   function's body when checking for invalid throws.
+extension SharedConfigurationBuilder on AnalysisSession {
+  static final Expando<ConfigurationBuilder> _builders = Expando();
+
+  ConfigurationBuilder get configurationBuilder =>
+      _builders[this] ??= ConfigurationBuilder(this);
+}
+
 class ConfigurationBuilder {
-  final _recursionProtectionKey = Object();
+  final ConfigurationResolver _resolver;
+  Future<void> _resolverLock = Future.value();
 
-  final Expando<({Zone zone, Future<Configuration?> result})>
-      _elementConfigurationCache = Expando();
+  ConfigurationBuilder(AnalysisSession session)
+    : _resolver = ConfigurationResolver(session);
 
-  final safeTypeChecker = TypeChecker.fromName(
-    'Safe',
-    packageName: 'checked_exceptions_annotations',
-  );
-  final neverThrowsTypeChecker = TypeChecker.fromName(
-    'NeverThrows',
-    packageName: 'checked_exceptions_annotations',
-  );
-  final throwsTypeChecker = TypeChecker.fromName(
-    'Throws',
-    packageName: 'checked_exceptions_annotations',
-  );
-  final throwsErrorTypeChecker = TypeChecker.fromName(
-    'ThrowsError',
-    packageName: 'checked_exceptions_annotations',
-  );
+  Future<Configuration> getConfiguration(AstNode node) async {
+    Future<void> lock;
+    do {
+      lock = _resolverLock;
+      await lock;
+    } while (lock != _resolverLock);
 
-  final futureTypeChecker = TypeChecker.fromUrl('dart:async#Future');
+    final result = _resolver.resolveConfiguration(node);
+    _resolverLock = result;
+    return await result;
+  }
 
-  /// The session this [ConfigurationBuilder] is bound to.
+  Future<Configuration> getElementConfiguration(Element element) async {
+    Future<void> lock;
+    do {
+      lock = _resolverLock;
+      await lock;
+    } while (lock != _resolverLock);
+
+    final result = _resolver.resolveElementConfiguration(element);
+    _resolverLock = result;
+    return await result;
+  }
+}
+
+class ConfigurationResolver {
+  static const dependentKey = #_dependent;
+
   final AnalysisSession session;
 
-  final DartType objectType;
-  final DartType typeErrorType;
+  final Future<LibraryElement> coreLibrary;
 
-  final ConfigurationOverrides overrides;
+  Future<DartType> get objectType =>
+      coreLibrary.then((l) => l.getClass('Object')!.thisType);
 
-  ConfigurationBuilder(
-    this.session, {
-    required this.objectType,
-    required this.typeErrorType,
-    required this.overrides,
-  });
+  Future<DartType> get exceptionType =>
+      coreLibrary.then((l) => l.getClass('Exception')!.thisType);
 
-  /// Create a [ConfigurationBuilder] for [session].
-  static Future<ConfigurationBuilder> forSession(
-    AnalysisSession session, {
-    ConfigurationOverrides? overrides,
-  }) async {
-    final coreLibrary = await session.getResolvedLibrary(
-            session.uriConverter.uriToPath(Uri.parse('dart:core'))!)
-        as ResolvedLibraryResult;
+  Future<DartType> get typeErrorType =>
+      coreLibrary.then((l) => l.getClass('TypeError')!.thisType);
 
-    return ConfigurationBuilder(
-      session,
-      objectType: coreLibrary.typeProvider.objectType,
-      typeErrorType: (coreLibrary.element.exportNamespace.get('TypeError')
-              as InterfaceElement)
-          .thisType,
-      overrides: overrides ?? await ConfigurationOverrides.forSession(session),
-    );
-  }
+  Future<DartType> get stateErrorType =>
+      coreLibrary.then((l) => l.getClass('StateError')!.thisType);
 
-  /// Get the [Configuration] of an [Expression].
-  ///
-  /// Returns `null` if no configuration could be generated.
-  Future<Configuration?> getExpressionConfiguration(Expression node) async {
-    return await node
-        .accept<Future<Configuration?>>(ExpressionConfigurationVisitor(this))!;
-  }
+  Future<DartType> get noSuchMethodErrorType =>
+      coreLibrary.then((l) => l.getClass('NoSuchMethodError')!.thisType);
 
-  /// Get the [Configuration] of an [Element]. This is the configuration of any [Identifier] whose
-  /// [Identifier.staticElement] is [element].
-  ///
-  /// Returns `null` if no configuration could be generated.
-  ///
-  /// This method caches results.
-  Future<Configuration?> getElementConfiguration(Element element) async {
-    final location = element.location;
-    if (location == null) return null;
+  Future<TypeSystem> get typeSystem => coreLibrary.then((l) => l.typeSystem);
 
-    final recursionProtectionKey = (location, _recursionProtectionKey);
-    if (Zone.current[recursionProtectionKey] != null) {
-      // Don't recompute the configuration if we're already computing it.
-      return null;
+  late final ConfigurationGenerator generator = ConfigurationGenerator(this);
+
+  static bool _astNodeEquals(AstNode a, AstNode b) {
+    if (a.offset != b.offset ||
+        a.length != b.length ||
+        a.runtimeType != b.runtimeType) {
+      return false;
     }
 
-    final cachedComputation = _elementConfigurationCache[location];
-    if (cachedComputation != null) {
-      // Don't use a computation that is depending on our computation.
-      if (cachedComputation.zone[recursionProtectionKey] != null) {
-        return null;
+    final aUnit = a.thisOrAncestorOfType<CompilationUnit>()?.declaredElement;
+    final bUnit = a.thisOrAncestorOfType<CompilationUnit>()?.declaredElement;
+
+    return aUnit == bUnit;
+  }
+
+  // Intentionally don't hash the node's compilation unit since accessing it is
+  // O(n) and this method should be fast. We can afford a few hash collisions.
+  static int _astNodeHash(AstNode node) =>
+      Object.hash(node.offset, node.length, node.runtimeType);
+
+  final Map<AstNode, Configuration> configurations = LinkedHashMap(
+    equals: _astNodeEquals,
+    hashCode: _astNodeHash,
+  );
+
+  final LinkedHashMap<AstNode, LinkedHashSet<AstNode>> dependents =
+      LinkedHashMap(equals: _astNodeEquals, hashCode: _astNodeHash);
+
+  LinkedHashSet<AstNode> needsRecomputing = LinkedHashSet(
+    equals: _astNodeEquals,
+    hashCode: _astNodeHash,
+  );
+
+  ConfigurationResolver(this.session)
+    : coreLibrary = Future(() async {
+        final result =
+            await session.getLibraryByUri('dart:core') as LibraryElementResult;
+        return result.element;
+      });
+
+  Future<Configuration> resolveConfiguration(AstNode node) async {
+    assert(needsRecomputing.isEmpty);
+
+    if (configurations[node] case final configuration?) {
+      return configuration;
+    }
+
+    needsRecomputing.add(node);
+
+    await runUntilSettled();
+
+    return configurations[node]!;
+  }
+
+  Future<Configuration> resolveElementConfiguration(Element element) async {
+    assert(needsRecomputing.isEmpty);
+
+    final alreadyKnown = await getElementConfiguration(element);
+    if (needsRecomputing.isEmpty) {
+      return alreadyKnown;
+    }
+
+    await runUntilSettled();
+
+    return await getElementConfiguration(element);
+  }
+
+  Future<void> runUntilSettled() async {
+    while (needsRecomputing.isNotEmpty) {
+      final nodes = needsRecomputing;
+      needsRecomputing = LinkedHashSet(
+        equals: _astNodeEquals,
+        hashCode: _astNodeHash,
+      );
+
+      Future<void> process(AstNode node) =>
+          runZoned(zoneValues: {dependentKey: node}, () async {
+            final oldConfiguration = configurations[node];
+            final newConfiguration = await node.accept(generator)!;
+
+            if (oldConfiguration != newConfiguration) {
+              configurations[node] = newConfiguration;
+              needsRecomputing.addAll(dependents[node] ?? {});
+            }
+          });
+
+      await Future.wait(nodes.map(process));
+    }
+  }
+
+  Configuration getConfiguration(AstNode node) {
+    final dependent = Zone.current[dependentKey]!;
+
+    (dependents[node] ??= LinkedHashSet(
+          equals: _astNodeEquals,
+          hashCode: _astNodeHash,
+        ))
+        .add(dependent);
+
+    if (configurations[node] case final configuration?) {
+      return configuration;
+    } else {
+      needsRecomputing.add(node);
+      return configurations[node] = Configuration.empty;
+    }
+  }
+
+  Throws readConfiguration(List<ElementAnnotation> annotations) {
+    final safeType = TypeChecker.fromName(
+      'Safe',
+      packageName: 'checked_exceptions_annotations',
+    );
+    final throwsErrorType = TypeChecker.fromName(
+      'ThrowsError',
+      packageName: 'checked_exceptions_annotations',
+    );
+    final neverThrowsType = TypeChecker.fromName(
+      'NeverThrows',
+      packageName: 'checked_exceptions_annotations',
+    );
+    final throwsType = TypeChecker.fromName(
+      'Throws',
+      packageName: 'checked_exceptions_annotations',
+    );
+
+    var canThrowUndeclaredErrors = false;
+    final thrownTypes = <DartType>{};
+
+    for (final annotation in annotations) {
+      final value = annotation.computeConstantValue();
+      final type = value?.type;
+
+      if (type is! InterfaceType) continue;
+
+      if (neverThrowsType.isAssignableFromType(type)) {
+        return Throws.explicit({}, canThrowUndeclaredErrors: false);
+      } else if (safeType.isAssignableFromType(type)) {
+        return Throws.explicit({}, canThrowUndeclaredErrors: true);
+      } else if (throwsErrorType.isAssignableFromType(type)) {
+        canThrowUndeclaredErrors =
+            canThrowUndeclaredErrors || throwsType.isAssignableFromType(type);
+        thrownTypes.add(type.typeArguments.single);
       }
-      return await cachedComputation.result;
     }
 
-    return await runZoned(
-      zoneValues: {recursionProtectionKey: true},
-      () => _elementConfigurationCache[location] =
-          (zone: Zone.current, result: computeElementConfiguration(element)),
-    ).result;
-  }
-
-  /// Perform the computation for [getElementConfiguration].
-  ///
-  /// This method should not be called directly. Instead, call [getElementConfiguration].
-  Future<Configuration?> computeElementConfiguration(Element element) async {
-    final overriddenConfiguration = overrides.overrides[element.location];
-    if (overriddenConfiguration != null) return overriddenConfiguration;
-
-    switch (element) {
-      case ExecutableElement():
-        final returnTypeConfiguration =
-            await computeTypeConfiguration(element.returnType);
-
-        final declaredConfiguration =
-            getExecutableElementAnnotationConfiguration(
-                element, returnTypeConfiguration);
-        if (declaredConfiguration != null) return declaredConfiguration;
-
-        if (element.enclosingElement case InterfaceElement interface) {
-          final inheritedConfiguration =
-              await getInheritedConfiguration(interface, element);
-          if (inheritedConfiguration != null) return inheritedConfiguration;
-        }
-
-        return await getExecutableElementThrowsConfiguration(
-            element, returnTypeConfiguration);
-      case VariableElement():
-        final typeConfiguration = element.hasImplicitType
-            ? null
-            : await computeTypeConfiguration(element.type);
-        final initializerConfiguration =
-            await getVariableElementInitializerConfiguration(element);
-
-        final declaredConfiguration =
-            await getVariableElementAnnotationConfiguration(
-          element,
-          element.isLate ? initializerConfiguration?.throws : null,
-          typeConfiguration ?? initializerConfiguration?.valueConfigurations,
-        );
-        if (declaredConfiguration != null) return declaredConfiguration;
-
-        if (element.enclosingElement case InterfaceElement interface) {
-          final inheritedConfiguration =
-              await getInheritedConfiguration(interface, element);
-          if (inheritedConfiguration != null) return inheritedConfiguration;
-        }
-
-        return initializerConfiguration;
-      default:
-        print('[BUILDER] Unhandled element type ${element.runtimeType}');
-        return null;
-    }
-  }
-
-  /// Get the [Configuration] for an [ExecutableElement] based solely on annotations on the element.
-  Configuration? getExecutableElementAnnotationConfiguration(
-    ExecutableElement element,
-    ValueThrows? returnTypeConfiguration,
-  ) {
-    final annotationConfiguration = getElementAnnotationConfiguration(element);
-    if (annotationConfiguration == null) return null;
-
-    return adaptThrowsToExecutableElementType(
-      element,
-      annotationConfiguration,
-      returnTypeConfiguration,
-    );
-  }
-
-  /// Convert a list of types thrown in the body of an [ExecutableElement] to a [Configuration].
-  ///
-  /// This is needed because errors thrown by an element's body do not always get thrown when the
-  /// element is invoked:
-  /// - Getters and setters throw when they are accessed (and they cannot be executed).
-  /// - Asynchronous functions throw when their result is awaited (and not when invoked).
-  Configuration adaptThrowsToExecutableElementType(
-    ExecutableElement element,
-    Throws thrownTypes,
-    ValueThrows? returnTypeConfiguration,
-  ) {
-    var configuration = Configuration(
-      thrownTypes,
-      returnTypeConfiguration ?? {},
-    );
-
-    if (element.isAsynchronous) {
-      configuration = Configuration(
-        (thrownTypes: [], canThrowUndeclaredErrors: false),
-        {PromotionType.await_: configuration},
+    if (thrownTypes.isNotEmpty) {
+      return Throws.explicit(
+        thrownTypes,
+        canThrowUndeclaredErrors: canThrowUndeclaredErrors,
       );
     }
 
-    if (element.kind != ElementKind.SETTER &&
-        element.kind != ElementKind.GETTER) {
-      configuration = Configuration(
-        (thrownTypes: [], canThrowUndeclaredErrors: false),
-        {PromotionType.invoke: configuration},
-      );
-    }
-
-    return configuration;
+    return Throws.empty;
   }
 
-  /// Given an [element], compute the restrictions that apply to its body based on its
-  /// configuration.
-  ///
-  /// This method essentially computes which annotations would have to be applied to the element to
-  /// reproduce the restrictions applied by its configuration, which might not be created from
-  /// annotations on the element.
-  ///
-  /// It is in spirit opposite to [adaptThrowsToExecutableElementType].
-  ///
-  /// If the element has annotations, this method returns the same a
-  /// [getElementAnnotationConfiguration].
-  Future<Throws?> computeEquivalentAnnotationConfiguration(
-    Element element, {
-    required bool isGetterOrSetter,
-    required bool isAsynchronous,
-  }) async {
-    var configuration = await getElementConfiguration(element);
-    if (configuration == null) return null;
+  ValueThrows getTypeConfiguration(DartType type) {
+    final explicit = switch (type.alias) {
+      final alias? => readConfiguration(alias.element.metadata),
+      _ => Throws.empty,
+    };
 
-    if (!isGetterOrSetter) {
-      configuration = configuration.valueConfigurations[PromotionType.invoke];
-      if (configuration == null) return null;
-    }
+    switch (type) {
+      case FunctionType():
+        final returnConfiguration = getTypeConfiguration(type.returnType);
 
-    if (isAsynchronous) {
-      configuration = configuration.valueConfigurations[PromotionType.await_];
-      if (configuration == null) return null;
-    }
-
-    return configuration.throws;
-  }
-
-  /// Compute the configuration for [element] based solely on the class members it overrides.
-  ///
-  /// [interfaceElement] must be the interface element that contains [element].
-  Future<Configuration?> getInheritedConfiguration(
-    InterfaceElement interfaceElement,
-    Element element,
-  ) async {
-    assert(element.enclosingElement == interfaceElement);
-
-    final inheritedConfigurationFutures = <Future<Configuration?>>[];
-
-    Set<InterfaceElement> getDirectSupertypeElements(
-            InterfaceElement interfaceElement) =>
-        {
-          if (interfaceElement.supertype case final supertype?)
-            supertype.element,
-          for (final interface in interfaceElement.interfaces)
-            interface.element,
-          for (final mixin in interfaceElement.mixins) mixin.element,
-          if (interfaceElement is MixinElement)
-            for (final constraint in interfaceElement.superclassConstraints)
-              constraint.element,
+        return {
+          PromotionType.invoke: Configuration(explicit, returnConfiguration),
         };
 
-    final elementsToVisit = getDirectSupertypeElements(interfaceElement);
-    final visitedElements = <InterfaceElement>{};
+      case InterfaceType()
+          when type.isDartAsyncFuture || type.isDartAsyncFutureOr:
+        final resultConfiguration = getTypeConfiguration(
+          type.typeArguments.single,
+        );
 
-    while (elementsToVisit.isNotEmpty) {
-      final superclassElement = elementsToVisit.first;
-      elementsToVisit.remove(superclassElement);
-      visitedElements.add(superclassElement);
+        return {
+          PromotionType.await_: Configuration(explicit, resultConfiguration),
+        };
 
-      if ((element.isPrivate && element.library != superclassElement.library) ||
-          (element is ClassMemberElement && element.isStatic) ||
-          element is ConstructorElement) {
+      default:
+        return {};
+    }
+  }
+
+  Future<Configuration> getElementConfiguration(Element element) async {
+    if (element is PropertyAccessorElement &&
+        element.isGetter &&
+        element.isSynthetic) {
+      final variable = element.nonSynthetic;
+      final library =
+          await session.getResolvedLibraryByElement(variable.library!)
+              as ResolvedLibraryResult;
+      final variableDeclaration = library.getElementDeclaration(variable)!;
+
+      return getConfiguration(variableDeclaration.node);
+    } else if (element is PropertyAccessorElement &&
+        element.isGetter &&
+        element.isSynthetic) {
+      return Configuration.empty;
+    } else if (element is ConstructorElement && element.isSynthetic) {
+      return Configuration.forValue({
+        PromotionType.invoke: Configuration.empty,
+      });
+    }
+
+    final library =
+        await session.getResolvedLibraryByElement(element.library!)
+            as ResolvedLibraryResult;
+    final declaration = library.getElementDeclaration(element);
+
+    if (declaration == null) {
+      throw 'Unable to get declaration for ${element.runtimeType} $element';
+    }
+
+    return getConfiguration(declaration.node);
+  }
+
+  Future<Throws> _mergeThrows(Iterable<Throws> throws) async {
+    final canThrowUndeclaredErrors = throws.any(
+      (t) => t.canThrowUndeclaredErrors,
+    );
+
+    final typeSystem = await this.typeSystem;
+    final exceptionType = await this.exceptionType;
+
+    final thrownTypes = <DartType>{};
+    for (final thrownType in throws.expand((t) => t.thrownTypes)) {
+      if (canThrowUndeclaredErrors &&
+          !typeSystem.isAssignableTo(thrownType, exceptionType)) {
         continue;
       }
 
-      var foundMatching = false;
-
-      for (final superclassElement in superclassElement.children) {
-        if (element.name == superclassElement.name &&
-            (superclassElement is ClassMemberElement &&
-                !superclassElement.isStatic) &&
-            superclassElement is! ConstructorElement) {
-          foundMatching = true;
-          inheritedConfigurationFutures
-              .add(getElementConfiguration(superclassElement));
-          break;
-        }
+      if (thrownTypes.any(
+        (alreadyThrown) => typeSystem.isAssignableTo(thrownType, alreadyThrown),
+      )) {
+        continue;
       }
 
-      if (!foundMatching) {
-        final nextToVisit = getDirectSupertypeElements(superclassElement);
-        elementsToVisit.addAll(
-            nextToVisit.where((element) => !visitedElements.contains(element)));
-      }
+      thrownTypes.removeWhere(
+        (alreadyThrown) => typeSystem.isAssignableTo(alreadyThrown, thrownType),
+      );
+
+      thrownTypes.add(thrownType);
     }
 
-    final inheritedConfigurations =
-        (await Future.wait(inheritedConfigurationFutures)).nonNulls.toList();
-
-    return Configuration.intersectConfigurations(inheritedConfigurations);
-  }
-
-  /// Compute the configuration for an [ExecutableElement] based solely on inference from the types
-  /// thrown in its body.
-  Future<Configuration?> getExecutableElementThrowsConfiguration(
-    ExecutableElement element,
-    ValueThrows? returnTypeConfiguration,
-  ) async {
-    final parsedLibrary =
-        await session.getResolvedLibraryByElement(element.library);
-    if (parsedLibrary is! ResolvedLibraryResult) {
-      print(
-          '[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
-      return null;
-    }
-
-    final elementDeclaration = parsedLibrary.getElementDeclaration(element);
-    if (elementDeclaration == null) {
-      print('[BUILDER] Unable to get declaration for ${element.runtimeType}');
-      return null;
-    }
-    final declarationNode = elementDeclaration.node;
-
-    final body = switch (declarationNode) {
-      MethodDeclaration() => declarationNode.body,
-      FunctionDeclaration() => declarationNode.functionExpression.body,
-      // TODO: Constructors also invoke super constructors and field initializers.
-      ConstructorDeclaration() => declarationNode.body,
-      _ => null,
-    };
-    if (body == null) {
-      print('[BUILDER] Unable to get body of ${declarationNode.runtimeType}');
-      return null;
-    }
-
-    final bodyThrows = await body.accept(ThrowFinder(this))!;
-
-    return adaptThrowsToExecutableElementType(
-      element,
-      bodyThrows.isEmpty
-          ? (thrownTypes: [], canThrowUndeclaredErrors: false)
-          : Configuration.unionConfigurations([
-              for (final throws in bodyThrows.values) Configuration(throws, {}),
-            ])!
-              .throws,
-      returnTypeConfiguration,
+    return Throws(
+      thrownTypes: thrownTypes,
+      canThrowUndeclaredErrors: canThrowUndeclaredErrors,
     );
   }
 
-  /// Return the configuration of [element]'s initializer, or `null` if [element] has no
-  /// initializer.
-  Future<Configuration?> getVariableElementInitializerConfiguration(
-      VariableElement element) async {
-    final library = element.library;
-    if (library == null) {
-      print('[BUILDER] Got element with null library');
-      return null;
+  Future<ValueThrows> _mergeValueThrows(Iterable<ValueThrows> throws) async {
+    final toMerge = <PromotionType, List<Configuration>>{};
+    for (final MapEntry(:key, :value) in throws.expand((e) => e.entries)) {
+      (toMerge[key] ??= []).add(value);
     }
 
-    final parsedLibrary = await session.getResolvedLibraryByElement(library);
-    if (parsedLibrary is! ResolvedLibraryResult) {
-      print(
-          '[BUILDER] Got invalid library result ${parsedLibrary.runtimeType}');
-      return null;
+    final result = <PromotionType, Configuration>{};
+
+    for (final MapEntry(:key, :value) in toMerge.entries) {
+      result[key] = Configuration(
+        await _mergeThrows(value.map((e) => e.throws)),
+        await _mergeValueThrows(value.map((e) => e.valueConfigurations)),
+      );
     }
 
-    final elementDeclaration = parsedLibrary.getElementDeclaration(element);
-    if (elementDeclaration == null) {
-      print('[BUILDER] Unable to get declaration for ${element.runtimeType}');
-      return null;
-    }
-    final declarationNode = elementDeclaration.node;
-
-    final initializer = switch (declarationNode) {
-      VariableDeclaration() => declarationNode.initializer,
-      DefaultFormalParameter() => declarationNode.defaultValue,
-      NormalFormalParameter() => null,
-      _ => 0, // Not an Expression
-    };
-    if (initializer is! Expression?) {
-      print(
-          '[BUILDER] Unable to get initializer of ${declarationNode.runtimeType}');
-      return null;
-    }
-
-    if (initializer == null) return null;
-
-    return await getExpressionConfiguration(initializer);
+    return result;
   }
 
-  Future<Configuration?> getVariableElementAnnotationConfiguration(
-    VariableElement element,
-    Throws? accessThrows,
-    ValueThrows? existingConfiguration,
-  ) async {
-    final annotationConfiguration = getElementAnnotationConfiguration(element);
-    if (annotationConfiguration == null) return null;
+  Configuration _resolveConfiguration(List<Configuration> configurations) {
+    final throws = configurations
+        .map((c) => c.throws)
+        .firstWhere(
+          (t) => !t.isInferred,
+          orElse: () => configurations.first.throws,
+        );
 
-    final isFuture = futureTypeChecker.isAssignableFromType(element.type);
-    final isCallable = switch (element.type) {
-      InterfaceType(:final element) => element.children.any(
-          (element) =>
-              element is MethodElement &&
-              !element.isStatic &&
-              element.name == FunctionElement.CALL_METHOD_NAME,
-        ),
-      FunctionType() => true,
-      _ => false,
+    final valueConfigurations = <PromotionType, List<Configuration>>{};
+    for (final MapEntry(:key, :value) in configurations
+        .map((e) => e.valueConfigurations)
+        .expand((e) => e.entries)) {
+      (valueConfigurations[key] ??= []).add(value);
+    }
+
+    return Configuration(throws, {
+      for (final MapEntry(:key, :value) in valueConfigurations.entries)
+        key: _resolveConfiguration(value),
+    });
+  }
+}
+
+class ConfigurationGenerator
+    extends GeneralizingAstVisitor<Future<Configuration>> {
+  final ConfigurationResolver resolver;
+
+  ConfigurationGenerator(this.resolver);
+
+  @override
+  Future<Configuration> visitNode(AstNode node) async {
+    throw UnsupportedError('Cannot get configuration for ${node.runtimeType}');
+  }
+
+  @override
+  Future<Configuration> visitExpression(Expression node) {
+    throw UnimplementedError(
+      'Cannot get configuration for ${node.runtimeType}',
+    );
+  }
+
+  @override
+  Future<Configuration> visitDeclaration(Declaration node) async {
+    throw UnimplementedError(
+      'Cannot get configuration for ${node.runtimeType}',
+    );
+  }
+
+  @override
+  Future<Configuration> visitFunctionDeclaration(
+    FunctionDeclaration node,
+  ) async {
+    final explicit = resolver.readConfiguration(node.declaredElement!.metadata);
+    var returns = resolver.getTypeConfiguration(
+      node.declaredElement!.returnType,
+    );
+    if (node.functionExpression.body.isAsynchronous) {
+      returns = returns[PromotionType.await_]?.valueConfigurations ?? {};
+    }
+
+    final explicitBodyConfiguration = Configuration(explicit, returns);
+
+    final inferrer = FunctionConfigurationInferrer(resolver);
+    await node.functionExpression.body.accept(inferrer);
+
+    final inferredBodyConfiguration = Configuration(
+      await resolver._mergeThrows(inferrer.throws),
+      await resolver._mergeValueThrows(inferrer.returns),
+    );
+
+    final bodyConfiguration = resolver._resolveConfiguration([
+      inferredBodyConfiguration,
+      explicitBodyConfiguration,
+    ]);
+
+    var invokeConfiguration = bodyConfiguration;
+    if (node.functionExpression.body.isAsynchronous) {
+      invokeConfiguration = Configuration.forValue({
+        PromotionType.await_: invokeConfiguration,
+      });
+    }
+
+    return Configuration.forValue({PromotionType.invoke: invokeConfiguration});
+  }
+
+  @override
+  Future<Configuration> visitConstructorDeclaration(
+    ConstructorDeclaration node,
+  ) async {
+    final explicit = resolver.readConfiguration(node.declaredElement!.metadata);
+    final explicitBodyConfiguration = Configuration.throws(explicit);
+
+    final inferrer = FunctionConfigurationInferrer(resolver);
+    await node.body.accept(inferrer);
+
+    final inferredBodyConfiguration = Configuration.throws(
+      await resolver._mergeThrows(inferrer.throws),
+    );
+
+    final bodyConfiguration = resolver._resolveConfiguration([
+      inferredBodyConfiguration,
+      explicitBodyConfiguration,
+    ]);
+
+    return Configuration.forValue({PromotionType.invoke: bodyConfiguration});
+  }
+
+  @override
+  Future<Configuration> visitMethodDeclaration(MethodDeclaration node) async {
+    final explicit = resolver.readConfiguration(node.declaredElement!.metadata);
+    var returns = resolver.getTypeConfiguration(
+      node.declaredElement!.returnType,
+    );
+    if (node.body.isAsynchronous) {
+      returns = returns[PromotionType.await_]?.valueConfigurations ?? {};
+    }
+
+    final explicitBodyConfiguration = Configuration(explicit, returns);
+
+    final inferrer = FunctionConfigurationInferrer(resolver);
+    await node.body.accept(inferrer);
+
+    final inferredBodyConfiguration = Configuration(
+      await resolver._mergeThrows(inferrer.throws),
+      await resolver._mergeValueThrows(inferrer.returns),
+    );
+
+    final bodyConfiguration = resolver._resolveConfiguration([
+      inferredBodyConfiguration,
+      explicitBodyConfiguration,
+    ]);
+
+    var invokeConfiguration = bodyConfiguration;
+    if (node.body.isAsynchronous) {
+      invokeConfiguration = Configuration.forValue({
+        PromotionType.await_: invokeConfiguration,
+      });
+    }
+
+    var configuration = invokeConfiguration;
+    if (!node.isGetter) {
+      configuration = Configuration.forValue({
+        PromotionType.invoke: configuration,
+      });
+    }
+
+    final clazz = node.declaredElement!.enclosingElement3;
+    MethodElement? overridden;
+    if (clazz is ClassElement) {
+      final supertypes = {
+        if (clazz.supertype case final supertype?) supertype,
+        ...clazz.mixins,
+        ...clazz.interfaces,
+      };
+
+      while (supertypes.isNotEmpty && overridden == null) {
+        final supertype = supertypes.first;
+        supertypes.remove(supertype);
+        final superclass = supertype.element;
+
+        overridden = superclass.methods.firstWhereOrNull(
+          (m) => m.name == node.name.lexeme,
+        );
+
+        supertypes.addAll({
+          if (superclass.supertype case final supertype?) supertype,
+          ...superclass.mixins,
+          ...superclass.interfaces,
+        });
+      }
+    }
+
+    final overriddenConfiguration = switch (overridden) {
+      final element? => await resolver.getElementConfiguration(element),
+      _ => Configuration.empty,
     };
 
-    var valueConfigurations = existingConfiguration;
-    if (isFuture && !isCallable) {
-      valueConfigurations = {
-        PromotionType.await_: Configuration(
-          annotationConfiguration,
-          existingConfiguration?[PromotionType.await_]?.valueConfigurations ??
-              {},
-        ),
-      };
-    } else if (isCallable && !isFuture) {
-      valueConfigurations = {
-        PromotionType.invoke: Configuration(
-          annotationConfiguration,
-          existingConfiguration?[PromotionType.invoke]?.valueConfigurations ??
-              {},
-        ),
-      };
-    } else {
-      // Ambiguous annotation or non-applicable.
-      return null;
+    return resolver._resolveConfiguration([
+      configuration,
+      overriddenConfiguration,
+    ]);
+  }
+
+  @override
+  Future<Configuration> visitClassDeclaration(ClassDeclaration node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitVariableDeclaration(
+    VariableDeclaration node,
+  ) async {
+    return _variableElementConfiguration(
+      node.declaredElement!,
+      node.initializer,
+    );
+  }
+
+  @override
+  Future<Configuration> visitNormalFormalParameter(
+    NormalFormalParameter node,
+  ) async {
+    return _variableElementConfiguration(node.declaredElement!, null);
+  }
+
+  @override
+  Future<Configuration> visitDefaultFormalParameter(
+    DefaultFormalParameter node,
+  ) async {
+    return _variableElementConfiguration(
+      node.declaredElement!,
+      node.defaultValue,
+    );
+  }
+
+  Configuration _variableElementConfiguration(
+    VariableElement element,
+    Expression? initializer,
+  ) {
+    var explicit = Configuration.throws(
+      resolver.readConfiguration(element.metadata),
+    );
+
+    final explicitConfiguration = switch (element.type) {
+      FunctionType() => {PromotionType.invoke: explicit},
+      InterfaceType type
+          when type.isDartAsyncFuture || type.isDartAsyncFutureOr =>
+        {PromotionType.await_: explicit},
+      _ => <PromotionType, Configuration>{},
+    };
+
+    final typeConfiguration = resolver.getTypeConfiguration(element.type);
+
+    final initializerConfiguration = switch (initializer) {
+      final initializer? => resolver.getConfiguration(initializer),
+      _ => Configuration.empty,
+    };
+
+    final config = resolver._resolveConfiguration([
+      initializerConfiguration,
+      Configuration.forValue(typeConfiguration),
+      Configuration.forValue(explicitConfiguration),
+    ]);
+
+    return config;
+  }
+
+  @override
+  Future<Configuration> visitAsExpression(AsExpression node) async {
+    return Configuration(
+      Throws.exactly({await resolver.typeErrorType}),
+      resolver.getConfiguration(node.expression).valueConfigurations,
+    );
+  }
+
+  @override
+  Future<Configuration> visitAugmentedExpression(
+    AugmentedExpression node,
+  ) async {
+    final library =
+        await resolver.session.getResolvedLibraryByElement(
+              node.element!.library!,
+            )
+            as ResolvedLibraryResult;
+    final declaration = library.getElementDeclaration(node.element!)!;
+
+    if (node.element case FieldElement()) {
+      return resolver.getConfiguration(
+        (declaration.node as VariableDeclaration).initializer!,
+      );
     }
+
+    return resolver.getConfiguration(declaration.node);
+  }
+
+  @override
+  Future<Configuration> visitAugmentedInvocation(
+    AugmentedInvocation node,
+  ) async {
+    return (await resolver.getElementConfiguration(
+          node.element!,
+        )).valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitAwaitExpression(AwaitExpression node) async {
+    final innerConfiguration = resolver.getConfiguration(node.expression);
+
+    return innerConfiguration.valueConfigurations[PromotionType.await_] ??
+        // For non-future expressions, just copy the value configuration.
+        Configuration.forValue(innerConfiguration.valueConfigurations);
+  }
+
+  @override
+  Future<Configuration> visitBinaryExpression(BinaryExpression node) async {
+    if (node.operator.type == TokenType.QUESTION_QUESTION) {
+      return Configuration.forValue(
+        await resolver._mergeValueThrows([
+          resolver.getConfiguration(node.leftOperand).valueConfigurations,
+          resolver.getConfiguration(node.rightOperand).valueConfigurations,
+        ]),
+      );
+    }
+
+    return (await resolver.getElementConfiguration(
+          node.staticElement!,
+        )).valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitCascadeExpression(CascadeExpression node) async {
+    return Configuration.forValue(
+      resolver.getConfiguration(node.target).valueConfigurations,
+    );
+  }
+
+  @override
+  Future<Configuration> visitConstructorReference(
+    ConstructorReference node,
+  ) async {
+    return resolver.getConfiguration(node.constructorName);
+  }
+
+  @override
+  Future<Configuration> visitConstructorName(ConstructorName node) async {
+    return await resolver.getElementConfiguration(node.staticElement!);
+  }
+
+  @override
+  Future<Configuration> visitFunctionReference(FunctionReference node) async {
+    return Configuration.forValue(
+      resolver.getConfiguration(node.function).valueConfigurations,
+    );
+  }
+
+  @override
+  Future<Configuration> visitIdentifier(Identifier node) async {
+    if (node.staticElement case final element?) {
+      return resolver.getElementConfiguration(element);
+    }
+
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitPropertyAccess(PropertyAccess node) async {
+    return resolver
+            .getConfiguration(node.propertyName)
+            .valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitTypeLiteral(TypeLiteral node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitAssignmentExpression(
+    AssignmentExpression node,
+  ) async {
+    final setterConfiguration = switch (node.staticElement) {
+      final element? => await resolver.getElementConfiguration(element),
+      _ => Configuration.forValue({PromotionType.invoke: Configuration.empty}),
+    };
 
     return Configuration(
-      accessThrows ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
-      valueConfigurations,
+      setterConfiguration.valueConfigurations[PromotionType.invoke]!.throws,
+      // Discard the return type of the setter; the RHS has more detailed
+      // information.
+      resolver.getConfiguration(node.rightHandSide).valueConfigurations,
     );
   }
 
-  /// Returns the configuration information provided by annotations on [element], or `null` if
-  /// [element] has no annotations.
-  Throws? getElementAnnotationConfiguration(
-    Element element,
-  ) {
-    final thrownTypes = <DartType>[];
-    var canThrowUndeclaredErrors = true;
-    var hasFoundConfiguration = false;
+  @override
+  Future<Configuration> visitConditionalExpression(
+    ConditionalExpression node,
+  ) async {
+    return Configuration.forValue(
+      await resolver._mergeValueThrows([
+        resolver.getConfiguration(node.thenExpression).valueConfigurations,
+        resolver.getConfiguration(node.elseExpression).valueConfigurations,
+      ]),
+    );
+  }
 
-    for (final annotation in element.metadata) {
-      final type = annotation.computeConstantValue()?.type;
-      if (type is! InterfaceType) continue;
+  @override
+  Future<Configuration> visitExtensionOverride(ExtensionOverride node) async {
+    return Configuration.empty;
+  }
 
-      if (safeTypeChecker.isAssignableFromType(type)) {
-        hasFoundConfiguration = true;
-        if (neverThrowsTypeChecker.isAssignableFromType(type))
-          canThrowUndeclaredErrors = false;
-      } else if (throwsErrorTypeChecker.isAssignableFromType(type)) {
-        hasFoundConfiguration = true;
+  @override
+  Future<Configuration> visitFunctionExpression(FunctionExpression node) async {
+    final inferrer = FunctionConfigurationInferrer(resolver);
+    node.body.visitChildren(inferrer);
 
-        final throwsErrorInstanciation = [type, ...type.allSupertypes]
-            .firstWhere(throwsErrorTypeChecker.isExactlyType);
-        thrownTypes.add(throwsErrorInstanciation.typeArguments.single);
+    var configuration = Configuration(
+      await resolver._mergeThrows(inferrer.throws),
+      await resolver._mergeValueThrows(inferrer.returns),
+    );
 
-        if (throwsTypeChecker.isAssignableFromType(type))
-          canThrowUndeclaredErrors = false;
+    if (node.body.isAsynchronous) {
+      configuration = Configuration.forValue({
+        PromotionType.await_: configuration,
+      });
+    }
+
+    return Configuration.forValue({PromotionType.invoke: configuration});
+  }
+
+  @override
+  Future<Configuration> visitInstanceCreationExpression(
+    InstanceCreationExpression node,
+  ) async {
+    return resolver
+            .getConfiguration(node.constructorName)
+            .valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitFunctionExpressionInvocation(
+    FunctionExpressionInvocation node,
+  ) async {
+    return resolver
+            .getConfiguration(node.function)
+            .valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitMethodInvocation(MethodInvocation node) async {
+    return resolver
+            .getConfiguration(node.methodName)
+            .valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitIsExpression(IsExpression node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitLiteral(Literal node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitImplicitCallReference(
+    ImplicitCallReference node,
+  ) async {
+    return await resolver.getElementConfiguration(node.staticElement);
+  }
+
+  @override
+  Future<Configuration> visitIndexExpression(IndexExpression node) async {
+    return (await resolver.getElementConfiguration(
+          node.staticElement!,
+        )).valueConfigurations[PromotionType.invoke] ??
+        Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+  }
+
+  @override
+  Future<Configuration> visitPostfixExpression(PostfixExpression node) async {
+    if (node.staticElement case final element?) {
+      return (await resolver.getElementConfiguration(
+            element,
+          )).valueConfigurations[PromotionType.invoke] ??
+          Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+    }
+
+    if (node.operator.type == TokenType.BANG) {
+      return Configuration.throwsExactly(await resolver.typeErrorType);
+    }
+
+    return super.visitPostfixExpression(node)!;
+  }
+
+  @override
+  Future<Configuration> visitPrefixExpression(PrefixExpression node) async {
+    if (node.staticElement case final element?) {
+      return (await resolver.getElementConfiguration(
+            element,
+          )).valueConfigurations[PromotionType.invoke] ??
+          Configuration.throwsExactly(await resolver.noSuchMethodErrorType);
+    }
+
+    if (node.operator.type == TokenType.BANG) {
+      return Configuration.empty;
+    }
+
+    return super.visitPrefixExpression(node)!;
+  }
+
+  @override
+  Future<Configuration> visitNamedExpression(NamedExpression node) async {
+    return Configuration.forValue(
+      resolver.getConfiguration(node.expression).valueConfigurations,
+    );
+  }
+
+  @override
+  Future<Configuration> visitParenthesizedExpression(
+    ParenthesizedExpression node,
+  ) async {
+    return Configuration.forValue(
+      resolver.getConfiguration(node.expression).valueConfigurations,
+    );
+  }
+
+  @override
+  Future<Configuration> visitPatternAssignment(PatternAssignment node) async {
+    return Configuration.throwsExactly(await resolver.stateErrorType);
+  }
+
+  @override
+  Future<Configuration> visitRethrowExpression(RethrowExpression node) async {
+    var catchClause = node.parent;
+    while (catchClause is! CatchClause) {
+      catchClause = catchClause!.parent;
+    }
+
+    if (catchClause.exceptionType case final type?) {
+      return Configuration.throwsExactly(type.type!);
+    }
+
+    return Configuration.throwsExactly(await resolver.objectType);
+  }
+
+  @override
+  Future<Configuration> visitSuperExpression(SuperExpression node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration>? visitSwitchExpression(SwitchExpression node) {
+    // TODO: implement visitSwitchExpression
+    return super.visitSwitchExpression(node);
+  }
+
+  @override
+  Future<Configuration> visitThisExpression(ThisExpression node) async {
+    return Configuration.empty;
+  }
+
+  @override
+  Future<Configuration> visitThrowExpression(ThrowExpression node) async {
+    return Configuration.throwsExactly(node.expression.staticType!);
+  }
+}
+
+class FunctionConfigurationInferrer
+    extends GeneralizingAstVisitor<Future<void>> {
+  final List<ValueThrows> returns = [];
+  final List<Throws> throws = [];
+
+  final ConfigurationResolver resolver;
+
+  FunctionConfigurationInferrer(this.resolver);
+
+  @override
+  Future<void> visitNode(AstNode node) {
+    return Future.wait(
+      node.childEntities.whereType<AstNode>().map((e) => e.accept(this)!),
+    );
+  }
+
+  @override
+  Future<void> visitExpression(Expression node) async {
+    throws.add(resolver.getConfiguration(node).throws);
+    return await super.visitExpression(node);
+  }
+
+  @override
+  Future<void> visitFunctionExpression(FunctionExpression node) async {}
+
+  @override
+  Future<void> visitReturnStatement(ReturnStatement node) async {
+    if (node.expression case final expression?) {
+      returns.add(resolver.getConfiguration(expression).valueConfigurations);
+    }
+    await super.visitReturnStatement(node);
+  }
+
+  @override
+  Future<void> visitTryStatement(TryStatement node) async {
+    final tryBodyVisitor = FunctionConfigurationInferrer(resolver);
+    node.body.accept(tryBodyVisitor);
+
+    returns.addAll(tryBodyVisitor.returns);
+
+    var bodyThrows = await resolver._mergeThrows(tryBodyVisitor.throws);
+    final typeSystem = await resolver.typeSystem;
+
+    for (final catchClause in node.catchClauses) {
+      catchClause.accept(this);
+
+      if (catchClause.exceptionType case final caughtType?) {
+        bodyThrows.thrownTypes.removeWhere(
+          (type) => typeSystem.isAssignableTo(type, caughtType.type!),
+        );
+      } else {
+        bodyThrows = Configuration.empty.throws;
       }
     }
 
-    if (!hasFoundConfiguration) return null;
-    return (
-      thrownTypes: thrownTypes,
-      canThrowUndeclaredErrors: canThrowUndeclaredErrors
-    );
-  }
-
-  /// Compute the configuration information provided by a type to any expression of that type.
-  Future<ValueThrows?> computeTypeConfiguration(
-    DartType type,
-  ) async {
-    switch (type) {
-      case FunctionType():
-        Throws? throws;
-        final returnTypeConfiguration =
-            await computeTypeConfiguration(type.returnType);
-
-        if (type.alias?.element case final aliasElement?) {
-          final declaredConfiguration =
-              getElementAnnotationConfiguration(aliasElement);
-          if (declaredConfiguration != null) {
-            throws = declaredConfiguration;
-          } else {
-            return await computeTypeConfiguration(aliasElement.aliasedType);
-          }
-        }
-
-        if (throws == null && returnTypeConfiguration == null) return null;
-
-        return {
-          PromotionType.invoke: Configuration(
-            throws ?? (thrownTypes: [], canThrowUndeclaredErrors: false),
-            returnTypeConfiguration ?? {},
-          ),
-        };
-      case InterfaceType():
-        final futureInstanciation = [type, ...type.allSupertypes]
-            .firstWhereOrNull(futureTypeChecker.isExactlyType);
-        final callMethod = type.element.children.singleWhereOrNull((element) =>
-            element is MethodElement &&
-            element.name == FunctionElement.CALL_METHOD_NAME);
-
-        if (futureInstanciation == null && callMethod == null) return null;
-
-        final declaredConfiguration = switch (type.alias?.element) {
-          // Declared configuration would be ambiguous in this case.
-          _ when callMethod != null && futureInstanciation != null => null,
-          final aliasElement? =>
-            getElementAnnotationConfiguration(aliasElement),
-          _ => null,
-        };
-        return {
-          if (futureInstanciation != null)
-            PromotionType.await_: Configuration(
-              declaredConfiguration ??
-                  (thrownTypes: [], canThrowUndeclaredErrors: false),
-              await computeTypeConfiguration(
-                      futureInstanciation.typeArguments.single) ??
-                  {},
-            ),
-          if (callMethod != null)
-            PromotionType.invoke: Configuration(
-              declaredConfiguration ??
-                  (thrownTypes: [], canThrowUndeclaredErrors: false),
-              (await getElementConfiguration(callMethod))
-                      ?.valueConfigurations ??
-                  {},
-            ),
-        };
-      case VoidType():
-        return null;
-      case TypeParameterType():
-        return null; // TODO
-      default:
-        print('[BUILDER] Unhandled type ${type.runtimeType}');
-        return null;
-    }
+    throws.add(bodyThrows);
   }
 }

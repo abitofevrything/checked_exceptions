@@ -1,5 +1,5 @@
 import 'package:analyzer/dart/element/type.dart';
-import 'package:custom_lint_builder/custom_lint_builder.dart';
+import 'package:collection/collection.dart';
 import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
 
 /// The way in which the value of an expression can cause errors to be thrown.
@@ -23,7 +23,50 @@ typedef ValueThrows = Map<PromotionType, Configuration>;
 
 /// The information provided by a combination [safe], [neverThrows], [Throws] and [ThrowsError]
 /// annotations on an element.
-typedef Throws = ({List<DartType> thrownTypes, bool canThrowUndeclaredErrors});
+
+class Throws {
+  static final Throws empty = Throws(
+    thrownTypes: {},
+    canThrowUndeclaredErrors: false,
+    isInferred: true,
+  );
+
+  final Set<DartType> thrownTypes;
+
+  final bool canThrowUndeclaredErrors;
+
+  final bool isInferred;
+
+  Throws({
+    required this.thrownTypes,
+    required this.canThrowUndeclaredErrors,
+    this.isInferred = true,
+  });
+
+  Throws.exactly(this.thrownTypes, {this.isInferred = true})
+    : canThrowUndeclaredErrors = false;
+
+  Throws.explicit(this.thrownTypes, {required this.canThrowUndeclaredErrors})
+    : isInferred = false;
+
+  @override
+  int get hashCode => Object.hash(
+    const SetEquality().hash(thrownTypes),
+    canThrowUndeclaredErrors,
+    isInferred,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is Throws &&
+      const SetEquality().equals(thrownTypes, other.thrownTypes) &&
+      other.canThrowUndeclaredErrors == canThrowUndeclaredErrors &&
+      other.isInferred == isInferred;
+
+  @override
+  String toString() =>
+      'Throws($thrownTypes, can throw undeclared: $canThrowUndeclaredErrors, inferred: $isInferred)';
+}
 
 /// Represents the errors thrown by an expression and its value.
 class Configuration {
@@ -37,131 +80,31 @@ class Configuration {
   /// expression's value.
   final ValueThrows valueConfigurations;
 
+  static final Configuration empty = Configuration(Throws.empty, {});
+
   Configuration(this.throws, this.valueConfigurations);
 
-  /// Whether an expression with this configuration can be assigned to a variable with the [other]
-  /// configuration.
-  bool isCompatibleWith(Configuration other, {int atLevel = 0}) {
-    if (atLevel <= 0) {
-      if (throws.canThrowUndeclaredErrors &&
-          !other.throws.canThrowUndeclaredErrors) {
-        return other.throws.thrownTypes
-            .any((element) => element.isDartCoreObject);
-      }
+  Configuration.throwsExactly(DartType error)
+    : throws = Throws.exactly({error}),
+      valueConfigurations = {};
 
-      final exceptionTypeChecker = TypeChecker.fromUrl('dart:core#Exception');
+  Configuration.throws(this.throws) : valueConfigurations = {};
 
-      for (final thrownType in throws.thrownTypes) {
-        if (!other.throws.thrownTypes.any((allowedType) =>
-            TypeChecker.fromStatic(allowedType)
-                .isAssignableFromType(thrownType))) {
-          if (!other.throws.canThrowUndeclaredErrors ||
-              exceptionTypeChecker.isAssignableFromType(thrownType)) {
-            return false;
-          }
-        }
-      }
-    }
+  Configuration.forValue(this.valueConfigurations) : throws = Throws.empty;
 
-    for (final MapEntry(:key, :value) in valueConfigurations.entries) {
-      final otherValue = other.valueConfigurations[key];
-      if (otherValue == null ||
-          value.isCompatibleWith(otherValue, atLevel: atLevel - 1)) continue;
+  @override
+  int get hashCode =>
+      Object.hash(throws, const MapEquality().hash(valueConfigurations));
 
-      return false;
-    }
+  @override
+  bool operator ==(Object other) =>
+      other is Configuration &&
+      const MapEquality().equals(
+        other.valueConfigurations,
+        valueConfigurations,
+      ) &&
+      other.throws == throws;
 
-    return true;
-  }
-
-  /// Returns a configuration that is compatible with all of [configurations].
-  static Configuration? intersectConfigurations(
-      List<Configuration> configurations) {
-    if (configurations.isEmpty) return null;
-
-    final canThrowUndeclaredErrors = configurations
-        .every((element) => element.throws.canThrowUndeclaredErrors);
-
-    final exceptionTypeChecker = TypeChecker.fromUrl('dart:core#Exception');
-
-    // All of the types thrown by the first configuration...
-    final thrownTypes = configurations.first.throws.thrownTypes.where(
-      // ...where every other configuration...
-      (thrownType) => configurations.skip(1).every(
-            // ...declares at least one thrown type...
-            (configuration) =>
-                configuration.throws.thrownTypes.any(
-                  // ...which matches the type thrown by the first configuration...
-                  (declaredThrownType) =>
-                      TypeChecker.fromStatic(declaredThrownType)
-                          .isAssignableFromType(thrownType),
-                ) ||
-                // ...or allows undeclared errors, if the thrown type isn't an exception.
-                (!exceptionTypeChecker.isAssignableFromType(thrownType) &&
-                    configuration.throws.canThrowUndeclaredErrors),
-          ),
-    );
-
-    return Configuration(
-      (
-        canThrowUndeclaredErrors: canThrowUndeclaredErrors,
-        thrownTypes: thrownTypes.toList()
-      ),
-      {
-        for (final promotionType in PromotionType.values)
-          if (configurations
-                  .map((c) => c.valueConfigurations[promotionType])
-                  .nonNulls
-                  .toList()
-              case final configurationsToIntersect
-              when configurationsToIntersect.isNotEmpty)
-            promotionType: intersectConfigurations(configurationsToIntersect)!,
-      },
-    );
-  }
-
-  /// Returns a configuration that every element of [configurations] is compatible with.
-  static Configuration? unionConfigurations(
-      List<Configuration> configurations) {
-    if (configurations.isEmpty) return null;
-
-    final canThrowUndeclaredErrors = configurations
-        .any((element) => element.throws.canThrowUndeclaredErrors);
-
-    final thrownTypes = <DartType>{};
-
-    for (final thrownType
-        in configurations.expand((element) => element.throws.thrownTypes)) {
-      if (thrownTypes.any(
-        (alreadyThrownType) => TypeChecker.fromStatic(alreadyThrownType)
-            .isAssignableFromType(thrownType),
-      )) {
-        continue;
-      }
-
-      thrownTypes.removeWhere(
-        (alreadyThrownType) => TypeChecker.fromStatic(thrownType)
-            .isAssignableFromType(alreadyThrownType),
-      );
-
-      thrownTypes.add(thrownType);
-    }
-
-    return Configuration(
-      (
-        canThrowUndeclaredErrors: canThrowUndeclaredErrors,
-        thrownTypes: thrownTypes.toList()
-      ),
-      {
-        for (final promotionType in PromotionType.values)
-          if (configurations
-                  .map((c) => c.valueConfigurations[promotionType])
-                  .nonNulls
-                  .toList()
-              case final configurationsToIntersect
-              when configurationsToIntersect.isNotEmpty)
-            promotionType: unionConfigurations(configurationsToIntersect)!,
-      },
-    );
-  }
+  @override
+  String toString() => 'Configuration($throws, $valueConfigurations)';
 }

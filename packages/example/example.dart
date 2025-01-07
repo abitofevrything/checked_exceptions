@@ -2,63 +2,86 @@ import 'package:checked_exceptions_annotations/checked_exceptions_annotations.da
 
 // ignore_for_file: unused_local_variable
 
-@neverThrows
-@safe
-void foo() async {
-  bar();
-  baz();
-  (1 > 0 ? bar : () {})();
-  (bar as dynamic)();
+void inferThrowsException() => throw Exception();
 
-  2.0 as int;
-  2.0 as dynamic;
+void inferThrowsError() => throw Error();
 
-  final future = awaitTime();
-  await future;
+void indirectlyThrowsException() => inferThrowsException();
 
-  ~Test();
-
-  int.parse('not an int');
-
-  needsSafeArgument(() => throw Exception());
-  needsSafeArgument(baz);
-
-  @safe
-  var localFn = baz;
-  localFn = baz;
-
-  @safe
-  final foo = baz();
-}
-
-void bar() {
-  throw Exception();
-}
+void indirectlyThrowsError() => inferThrowsError();
 
 @Throws<Exception>()
-void Function() baz() => () {};
+void explicitThrowsException() {}
 
-void needsSafeArgument(@safe void Function() f) {}
+@ThrowsError<Error>()
+void explicitThrowsError() {}
 
-Future<void> awaitTime() async {
-  throw Exception();
+@safe
+void safeFunction() {
+  if (1 == 1) throw Exception();
+  if (1 == 1) throw Error();
+
+  inferThrowsException();
+  inferThrowsError();
+
+  indirectlyThrowsException();
+  indirectlyThrowsError();
+
+  explicitThrowsException();
+  explicitThrowsError();
+
+  safeFunction();
+  neverThrowsFunction();
 }
 
-class Test {
-  @Throws<Exception>()
-  void operator ~() {}
+@neverThrows
+void neverThrowsFunction() {
+  if (1 == 1) throw Exception();
+  if (1 == 1) throw Error();
 
-  @safe
-  void safeMember() {}
+  inferThrowsException();
+  inferThrowsError();
+
+  indirectlyThrowsException();
+  indirectlyThrowsError();
+
+  explicitThrowsException();
+  explicitThrowsError();
+
+  safeFunction();
+  neverThrowsFunction();
 }
 
-class Test1 extends Test {
-  @override
-  void safeMember() => throw Exception();
-}
+void parameterTests({
+  @safe required void Function() safeFunction,
+  @neverThrows required void Function() neverThrowsFunction,
+  @Throws<Exception>() required void Function() throwsExceptionFunction,
+  @ThrowsError<Error>() required void Function() throwsErrorFunction,
+}) {}
 
-class Test2 extends Test {
-  @override
-  @Throws<Exception>()
-  void safeMember() {}
+void main() {
+  parameterTests(
+    safeFunction: safeFunction,
+    neverThrowsFunction: safeFunction,
+    throwsExceptionFunction: safeFunction,
+    throwsErrorFunction: safeFunction,
+  );
+  parameterTests(
+    safeFunction: neverThrowsFunction,
+    neverThrowsFunction: neverThrowsFunction,
+    throwsExceptionFunction: neverThrowsFunction,
+    throwsErrorFunction: neverThrowsFunction,
+  );
+  parameterTests(
+    safeFunction: inferThrowsException,
+    neverThrowsFunction: inferThrowsException,
+    throwsExceptionFunction: inferThrowsException,
+    throwsErrorFunction: inferThrowsException,
+  );
+  parameterTests(
+    safeFunction: inferThrowsError,
+    neverThrowsFunction: inferThrowsError,
+    throwsExceptionFunction: inferThrowsError,
+    throwsErrorFunction: inferThrowsError,
+  );
 }
