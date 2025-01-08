@@ -54,6 +54,7 @@ class ConfigurationBuilder {
 
 class ConfigurationResolver {
   static const dependentKey = #_dependent;
+  static const implicitDependent = #_noDependent;
 
   final AnalysisSession session;
 
@@ -133,14 +134,16 @@ class ConfigurationResolver {
   Future<Configuration> resolveElementConfiguration(Element element) async {
     assert(needsRecomputing.isEmpty);
 
-    final alreadyKnown = await getElementConfiguration(element);
-    if (needsRecomputing.isEmpty) {
-      return alreadyKnown;
-    }
+    return runZoned(zoneValues: {dependentKey: implicitDependent}, () async {
+      final alreadyKnown = await getElementConfiguration(element);
+      if (needsRecomputing.isEmpty) {
+        return alreadyKnown;
+      }
 
-    await runUntilSettled();
+      await runUntilSettled();
 
-    return await getElementConfiguration(element);
+      return await getElementConfiguration(element);
+    });
   }
 
   Future<void> runUntilSettled() async {
@@ -169,11 +172,15 @@ class ConfigurationResolver {
   Configuration getConfiguration(AstNode node) {
     final dependent = Zone.current[dependentKey]!;
 
-    (dependents[node] ??= LinkedHashSet(
-          equals: _astNodeEquals,
-          hashCode: _astNodeHash,
-        ))
-        .add(dependent);
+    if (dependent is AstNode) {
+      (dependents[node] ??= LinkedHashSet(
+            equals: _astNodeEquals,
+            hashCode: _astNodeHash,
+          ))
+          .add(dependent);
+    } else {
+      assert(dependent == implicitDependent);
+    }
 
     if (configurations[node] case final configuration?) {
       return configuration;
