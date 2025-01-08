@@ -223,7 +223,7 @@ class ConfigurationResolver {
         return Throws.explicit({}, canThrowUndeclaredErrors: true);
       } else if (throwsErrorType.isAssignableFromType(type)) {
         canThrowUndeclaredErrors =
-            canThrowUndeclaredErrors || throwsType.isAssignableFromType(type);
+            canThrowUndeclaredErrors || !throwsType.isAssignableFromType(type);
         thrownTypes.add(type.typeArguments.single);
       }
     }
