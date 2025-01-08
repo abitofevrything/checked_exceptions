@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/element/type.dart';
 import 'package:collection/collection.dart';
 import 'package:checked_exceptions_annotations/checked_exceptions_annotations.dart';
+import 'package:custom_lint_builder/custom_lint_builder.dart';
 
 /// The way in which the value of an expression can cause errors to be thrown.
 enum PromotionType {
@@ -91,6 +92,46 @@ class Configuration {
   Configuration.throws(this.throws) : valueConfigurations = {};
 
   Configuration.forValue(this.valueConfigurations) : throws = Throws.empty;
+
+  bool isCompatible(Configuration parameter) {
+    if (throws.canThrowUndeclaredErrors &&
+        !parameter.throws.canThrowUndeclaredErrors) {
+      return false;
+    }
+
+    final exceptionType = TypeChecker.fromUrl('dart:core#Exception');
+
+    nextThrownType:
+    for (final thrownType in throws.thrownTypes) {
+      if (parameter.throws.canThrowUndeclaredErrors &&
+          !exceptionType.isAssignableFromType(thrownType)) {
+        continue;
+      }
+
+      for (final allowedType in parameter.throws.thrownTypes) {
+        if (TypeChecker.fromStatic(
+          allowedType,
+        ).isAssignableFromType(thrownType)) {
+          continue nextThrownType;
+        }
+      }
+
+      return false;
+    }
+
+    for (final MapEntry(:key, :value)
+        in parameter.valueConfigurations.entries) {
+      if (valueConfigurations[key] case final argumentConfiguration?) {
+        if (!argumentConfiguration.isCompatible(value)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   @override
   int get hashCode =>

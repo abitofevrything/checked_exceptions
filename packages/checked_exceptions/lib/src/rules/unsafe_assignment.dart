@@ -59,48 +59,9 @@ class UnsafeAssignment extends DartLintRule {
   ) {
     for (final (expression, argumentConfiguration, parameterConfiguration)
         in expressions) {
-      if (!isCompatible(argumentConfiguration, parameterConfiguration)) {
+      if (!argumentConfiguration.isCompatible(parameterConfiguration)) {
         reporter.atNode(expression, _code);
       }
     }
   }
-}
-
-bool isCompatible(Configuration argument, Configuration parameter) {
-  if (argument.throws.canThrowUndeclaredErrors &&
-      !parameter.throws.canThrowUndeclaredErrors) {
-    return false;
-  }
-
-  final exceptionType = TypeChecker.fromUrl('dart:core#Exception');
-
-  nextThrownType:
-  for (final thrownType in argument.throws.thrownTypes) {
-    if (parameter.throws.canThrowUndeclaredErrors &&
-        !exceptionType.isAssignableFromType(thrownType)) {
-      continue;
-    }
-
-    for (final allowedType in parameter.throws.thrownTypes) {
-      if (TypeChecker.fromStatic(
-        allowedType,
-      ).isAssignableFromType(thrownType)) {
-        continue nextThrownType;
-      }
-    }
-
-    return false;
-  }
-
-  for (final MapEntry(:key, :value) in parameter.valueConfigurations.entries) {
-    if (argument.valueConfigurations[key] case final argumentConfiguration?) {
-      if (!isCompatible(argumentConfiguration, value)) {
-        return false;
-      }
-    } else {
-      return false;
-    }
-  }
-
-  return true;
 }
