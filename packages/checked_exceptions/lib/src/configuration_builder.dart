@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/analysis/session.dart';
@@ -10,6 +9,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/element/type_system.dart';
 import 'package:checked_exceptions/src/configuration.dart';
+import 'package:checked_exceptions/src/util/ast_node_equality.dart';
 import 'package:collection/collection.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
 
@@ -79,36 +79,13 @@ class ConfigurationResolver {
 
   late final ConfigurationGenerator generator = ConfigurationGenerator(this);
 
-  static bool _astNodeEquals(AstNode a, AstNode b) {
-    if (a.offset != b.offset ||
-        a.length != b.length ||
-        a.runtimeType != b.runtimeType) {
-      return false;
-    }
-
-    final aUnit = a.thisOrAncestorOfType<CompilationUnit>()?.declaredElement;
-    final bUnit = a.thisOrAncestorOfType<CompilationUnit>()?.declaredElement;
-
-    return aUnit == bUnit;
-  }
-
-  // Intentionally don't hash the node's compilation unit since accessing it is
-  // O(n) and this method should be fast. We can afford a few hash collisions.
-  static int _astNodeHash(AstNode node) =>
-      Object.hash(node.offset, node.length, node.runtimeType);
-
-  final Map<AstNode, Configuration> configurations = LinkedHashMap(
-    equals: _astNodeEquals,
-    hashCode: _astNodeHash,
+  final Map<AstNode, Configuration> configurations = EqualityMap(
+    AstNodeEquality(),
   );
 
-  final LinkedHashMap<AstNode, LinkedHashSet<AstNode>> dependents =
-      LinkedHashMap(equals: _astNodeEquals, hashCode: _astNodeHash);
+  final Map<AstNode, Set<AstNode>> dependents = EqualityMap(AstNodeEquality());
 
-  LinkedHashSet<AstNode> needsRecomputing = LinkedHashSet(
-    equals: _astNodeEquals,
-    hashCode: _astNodeHash,
-  );
+  Set<AstNode> needsRecomputing = EqualitySet(AstNodeEquality());
 
   ConfigurationResolver(this.session)
     : coreLibrary = Future(() async {
@@ -149,10 +126,7 @@ class ConfigurationResolver {
   Future<void> runUntilSettled() async {
     while (needsRecomputing.isNotEmpty) {
       final nodes = needsRecomputing;
-      needsRecomputing = LinkedHashSet(
-        equals: _astNodeEquals,
-        hashCode: _astNodeHash,
-      );
+      needsRecomputing = EqualitySet(AstNodeEquality());
 
       Future<void> process(AstNode node) =>
           runZoned(zoneValues: {dependentKey: node}, () async {
@@ -173,11 +147,7 @@ class ConfigurationResolver {
     final dependent = Zone.current[dependentKey]!;
 
     if (dependent is AstNode) {
-      (dependents[node] ??= LinkedHashSet(
-            equals: _astNodeEquals,
-            hashCode: _astNodeHash,
-          ))
-          .add(dependent);
+      (dependents[node] ??= EqualitySet(AstNodeEquality())).add(dependent);
     } else {
       assert(dependent == implicitDependent);
     }
